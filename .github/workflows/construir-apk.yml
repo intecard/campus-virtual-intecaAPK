@@ -33,8 +33,9 @@ jobs:
 
       - name: 🤖 Generar estructura Android pura y limpia
         run: |
+          rm capacitor.config.ts
           npx cap init "Campus Virtual" "com.inteca.campus" --web-dir dist
-          npx cap add android || true
+          npx cap add android
           npx cap sync android
 
       - name: ⚙️ Otorgar permisos al motor de Android
