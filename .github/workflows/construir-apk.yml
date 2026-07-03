@@ -1,7 +1,7 @@
 name: Ensamblar APK de Android
 
 on:
-  workflow_dispatch: # Permite ejecutar el ensamblaje manualmente con un botón
+  workflow_dispatch:
 
 jobs:
   build-android:
@@ -25,13 +25,16 @@ jobs:
       - name: 📦 Instalar dependencias web
         run: npm install
 
+      - name: 🛠️ Asegurar Motor de Capacitor
+        run: npm install @capacitor/cli @capacitor/android
+
       - name: 🏗️ Construir Web (Vite)
         run: npm run build
 
       - name: 🤖 Generar estructura Android pura y limpia
         run: |
-          npx --package=@capacitor/cli cap add android || true
-          npx --package=@capacitor/cli cap sync android
+          npx cap add android || true
+          npx cap sync android
 
       - name: ⚙️ Otorgar permisos al motor de Android
         working-directory: ./android
