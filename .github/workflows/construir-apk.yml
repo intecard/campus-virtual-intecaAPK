@@ -30,8 +30,8 @@ jobs:
 
       - name: 🤖 Generar estructura Android pura y limpia
         run: |
-          npx cap add android || true
-          npx cap sync android
+          npx @capacitor/cli add android || true
+          npx @capacitor/cli sync android
 
       - name: ⚙️ Otorgar permisos al motor de Android
         working-directory: ./android
