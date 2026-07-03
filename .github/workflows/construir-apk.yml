@@ -33,6 +33,7 @@ jobs:
 
       - name: 🤖 Generar estructura Android pura y limpia
         run: |
+          npx cap init "Campus Virtual" "com.inteca.campus" --web-dir dist --force
           npx cap add android || true
           npx cap sync android
 
