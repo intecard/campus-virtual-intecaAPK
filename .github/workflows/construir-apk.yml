@@ -1,0 +1,48 @@
+name: Ensamblar APK de Android
+
+on:
+  workflow_dispatch: # Permite ejecutar el ensamblaje manualmente con un botón
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Descargar código
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js (Versión 20)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: ☕ Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 📦 Instalar dependencias web
+        run: npm install
+
+      - name: 🏗️ Construir Web (Vite)
+        run: npm run build
+
+      - name: 🤖 Generar estructura Android pura y limpia
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: ⚙️ Otorgar permisos al motor de Android
+        working-directory: ./android
+        run: chmod +x ./gradlew
+
+      - name: 🚀 Empaquetar APK
+        working-directory: ./android
+        run: ./gradlew assembleDebug
+
+      - name: 🎁 Guardar y entregar APK final
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-virtual-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
