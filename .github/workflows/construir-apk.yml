@@ -38,6 +38,19 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      - name: 🩹 Resolver conflicto de Kotlin (Clases duplicadas)
+        working-directory: ./android
+        run: |
+          cat <<EOF >> app/build.gradle
+          
+          configurations.all {
+              resolutionStrategy {
+                  exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+                  exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+              }
+          }
+          EOF
+
       - name: ⚙️ Otorgar permisos al motor de Android
         working-directory: ./android
         run: chmod +x ./gradlew
