@@ -1,0 +1,6 @@
+{
+  "name": "Campus Virtual INTECA",
+  "description": "Campus Virtual LMS moderno, inteligente y automatizado para el Instituto Técnico del Caribe (INTECA), impulsado por Inteligencia Artificial.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
