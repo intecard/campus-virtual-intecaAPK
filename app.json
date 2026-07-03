@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "45929277-f87e-4b51-8c62-dca719f0ef8f"
+      }
+    },
+    "android": {
+      "package": "com.elyami3030.reactexample"
+    }
+  }
+}
