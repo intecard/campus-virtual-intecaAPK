@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Sparkles, Mail, Lock, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn } from "lucide-react";
+// @ts-ignore
+import logoInteca from "../icon.png";
 
 interface LoginViewProps {
   onLoginSuccess: () => void;
@@ -39,8 +41,10 @@ export default function LoginView({ onLoginSuccess }: LoginViewProps) {
         
         {/* Logo y Encabezado */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-3 bg-brand-green/20 rounded-2xl border border-brand-green/30 mb-4">
-            <Sparkles className="w-8 h-8 text-brand-green" />
+          <div className="flex justify-center mb-4">
+            <div className="bg-white p-2 rounded-full shadow-lg border border-brand-green/30 inline-flex items-center justify-center">
+              <img src={logoInteca} alt="Logo INTECA" className="w-20 h-20 object-contain rounded-full" />
+            </div>
           </div>
           <h1 className="text-3xl font-display font-bold text-white tracking-tight">INTECA</h1>
           <p className="text-sm text-slate-400 mt-2 uppercase tracking-widest font-semibold">Campus Virtual</p>
