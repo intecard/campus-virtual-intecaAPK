@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   FileText,
   MessageSquare,
-  Users
+  Users,
+  Video
 } from "lucide-react";
 import { UserRole, UserProfile, Course, LiveClass } from "../types";
 
