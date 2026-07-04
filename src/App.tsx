@@ -1,12 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { 
   Bell, 
   Sparkles, 
-  AlertCircle, 
-  UserCheck, 
-  ShieldCheck, 
-  CheckCircle,
-  HelpCircle,
+  Menu,
   X
 } from "lucide-react";
 import Sidebar from "./components/Sidebar";
@@ -17,10 +13,13 @@ import AIEducator from "./components/AIEducator";
 import AnalyticsView from "./components/AnalyticsView";
 import FilesView from "./components/FilesView";
 import SettingsView from "./components/SettingsView";
+import LoginView from "./components/LoginView";
 import { UserRole, UserProfile, Course, LiveClass } from "./types";
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false); // 🔒 Estado de seguridad
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
   const [notifications, setNotifications] = useState([
     { id: "n1", text: "Nueva clase en vivo de Telemedicina transmitiendo ahora.", unread: true },
     { id: "n2", text: "Tu ensayo de Ciberseguridad ha sido evaluado por IA.", unread: true },
@@ -34,7 +33,7 @@ export default function App() {
     name: "Luis Ramírez Escalante",
     email: "luisramirezescalante20@gmail.com",
     role: "student",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200", // High contrast friendly professional avatar
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200", 
     academicId: "INTECA-2026-9481",
     joinedDate: "Feb 2026",
     progress: 74,
@@ -55,7 +54,7 @@ export default function App() {
     }
   });
 
-  // Caribbean Technical Institute Course List aligned with visual headphones/shield/cross logo
+  // Caribbean Technical Institute Course List
   const [courses, setCourses] = useState<Course[]>([
     {
       id: "c_telemedicina",
@@ -146,7 +145,6 @@ export default function App() {
     }
   ]);
 
-  // Live classes scheduled in the technical institute
   const [liveClasses, setLiveClasses] = useState<LiveClass[]>([
     {
       id: "class_1",
@@ -161,7 +159,6 @@ export default function App() {
     }
   ]);
 
-  // Switch roles globally to check user experiences
   const handleChangeRole = (role: UserRole) => {
     const roleAvatars: Record<UserRole, string> = {
       student: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
@@ -180,6 +177,7 @@ export default function App() {
 
     setCurrentUser(updatedUser);
     setActiveTab("dashboard");
+    setIsMobileMenuOpen(false); 
   };
 
   const handleUpdateProfile = (profileData: Partial<UserProfile>) => {
@@ -189,7 +187,6 @@ export default function App() {
     }));
   };
 
-  // Real Gemini Homework grading connector
   const handleGradeHomework = async (courseId: string, taskTitle: string, submittedText: string) => {
     try {
       const res = await fetch("/api/homework/grade", {
@@ -216,132 +213,152 @@ export default function App() {
   const unreadCount = notifications.filter(n => n.unread).length;
 
   return (
-    <div id="campus-app-layout" className="min-h-screen bg-slate-50 text-slate-800 flex font-sans">
-      
-      {/* Sidebar navigation */}
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        currentUser={currentUser} 
-        onChangeRole={handleChangeRole}
-        onLogout={() => {
-          alert("Sesión cerrada ficticiamente. El campus virtual guardará tus progresos locales.");
-        }}
-      />
-
-      {/* Main Content Area */}
-      <main id="main-content-container" className="flex-1 ml-72 p-8 md:p-10 min-h-screen relative flex flex-col justify-between overflow-x-hidden">
-        
-        {/* Persistent Top Header with Notification tray and clock */}
-        <header id="campus-top-header" className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400 font-mono tracking-widest uppercase">Campus Virtual</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-xs font-semibold text-brand-green capitalize">{activeTab}</span>
-          </div>
-
-          <div className="flex items-center gap-4 relative">
-            
-            {/* Quick stats for students */}
-            {currentUser.role === 'student' && (
-              <div className="hidden md:flex items-center gap-3 bg-brand-green/10 border border-brand-green/20 px-3.5 py-1.5 rounded-xl">
-                <Sparkles className="w-4 h-4 text-brand-green" />
-                <span className="text-[11px] font-bold text-slate-700">Racha de estudio: <strong className="text-brand-green">14 Días 🔥</strong></span>
-              </div>
-            )}
-
-            {/* Notification Bell */}
-            <button 
-              onClick={() => {
-                setShowNotificationCenter(!showNotificationCenter);
-                if (!showNotificationCenter) clearUnreadNotifications();
-              }}
-              className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all text-slate-600 relative shrink-0"
-            >
-              <Bell className="w-4.5 h-4.5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 animate-bounce"></span>
-              )}
-            </button>
-
-            {/* Notification Center Tray */}
-            {showNotificationCenter && (
-              <div className="absolute right-0 top-12 bg-white rounded-2xl border border-slate-100 shadow-xl p-4 w-80 z-30 space-y-3">
-                <div className="flex justify-between items-center border-b pb-2">
-                  <h4 className="text-xs font-bold text-slate-900">Centro de Notificaciones</h4>
-                  <button onClick={() => setShowNotificationCenter(false)} className="text-slate-400 hover:text-slate-600">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="space-y-2.5 max-h-[220px] overflow-y-auto">
-                  {notifications.map((not) => (
-                    <div key={not.id} className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${not.unread ? 'bg-brand-green/10 border-brand-green/20 font-medium' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
-                      {not.text}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-        </header>
-
-        {/* View switching panel wrapper */}
-        <div id="active-view-panel-container" className="flex-1 pb-10">
-          {activeTab === 'dashboard' && (
-            <DashboardView 
-              currentUser={currentUser} 
-              courses={courses} 
-              liveClasses={liveClasses}
-              setActiveTab={setActiveTab}
+    <>
+      {!isAuthenticated ? (
+        <LoginView onLoginSuccess={() => setIsAuthenticated(true)} />
+      ) : (
+        <div id="campus-app-layout" className="min-h-screen bg-slate-50 text-slate-800 flex font-sans overflow-hidden">
+          
+          {isMobileMenuOpen && (
+            <div 
+              className="fixed inset-0 bg-slate-900/50 z-40 md:hidden transition-opacity"
+              onClick={() => setIsMobileMenuOpen(false)}
             />
           )}
 
-          {activeTab === 'courses' && (
-            <CoursesView 
+          <div className={`fixed inset-y-0 left-0 z-50 transform ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:fixed transition-transform duration-300 ease-in-out`}>
+            <Sidebar 
+              activeTab={activeTab} 
+              setActiveTab={(tab) => {
+                setActiveTab(tab);
+                setIsMobileMenuOpen(false);
+              }} 
               currentUser={currentUser} 
-              courses={courses} 
-              setActiveTab={setActiveTab}
-              onGradeHomework={handleGradeHomework}
-            />
-          )}
-
-          {activeTab === 'classroom' && (
-            <VirtualClassroom currentUser={currentUser} />
-          )}
-
-          {activeTab === 'tutor' && (
-            <AIEducator currentUser={currentUser} />
-          )}
-
-          {activeTab === 'analytics' && (
-            <AnalyticsView />
-          )}
-
-          {activeTab === 'files' && (
-            <FilesView />
-          )}
-
-          {activeTab === 'settings' && (
-            <SettingsView 
-              currentUser={currentUser} 
-              onChangeProfile={handleUpdateProfile}
               onChangeRole={handleChangeRole}
+              onLogout={() => {
+                setIsAuthenticated(false); // Cierra sesión y devuelve al Login
+              }}
             />
-          )}
-        </div>
-
-        {/* Institutional Footer */}
-        <footer id="campus-institutional-footer" className="mt-auto border-t border-slate-100 pt-4 flex flex-col md:flex-row justify-between items-center gap-3 text-[10px] text-slate-400 shrink-0">
-          <p>© 2026 Instituto Técnico del Caribe (INTECA). Todos los derechos reservados.</p>
-          <div className="flex gap-4">
-            <a href="#" onClick={(e) => { e.preventDefault(); alert("Auditoría de privacidad conforme a HIPAA / GDPR activa."); }} className="hover:underline">Políticas de Privacidad</a>
-            <span className="text-slate-200">|</span>
-            <a href="#" onClick={(e) => { e.preventDefault(); alert("Contacto: soporte@inteca.edu.co"); }} className="hover:underline">Soporte LMS</a>
           </div>
-        </footer>
 
-      </main>
-    </div>
+          <main id="main-content-container" className="flex-1 w-full md:ml-72 p-4 md:p-10 min-h-screen relative flex flex-col justify-between overflow-x-hidden overflow-y-auto">
+            
+            <header id="campus-top-header" className="flex justify-between items-center mb-6 md:mb-8 border-b border-slate-100 pb-4 shrink-0 mt-2 md:mt-0">
+              
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="md:hidden p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-colors"
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="hidden md:inline text-xs font-bold text-slate-400 font-mono tracking-widest uppercase">Campus Virtual</span>
+                  <span className="hidden md:inline text-slate-300">/</span>
+                  <span className="text-sm md:text-xs font-semibold text-brand-green capitalize">{activeTab}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4 relative">
+                
+                {currentUser.role === 'student' && (
+                  <div className="hidden lg:flex items-center gap-3 bg-brand-green/10 border border-brand-green/20 px-3.5 py-1.5 rounded-xl">
+                    <Sparkles className="w-4 h-4 text-brand-green" />
+                    <span className="text-[11px] font-bold text-slate-700">Racha de estudio: <strong className="text-brand-green">14 Días 🔥</strong></span>
+                  </div>
+                )}
+
+                <button 
+                  onClick={() => {
+                    setShowNotificationCenter(!showNotificationCenter);
+                    if (!showNotificationCenter) clearUnreadNotifications();
+                  }}
+                  className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all text-slate-600 relative shrink-0"
+                >
+                  <Bell className="w-4.5 h-4.5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-500 animate-bounce"></span>
+                  )}
+                </button>
+
+                {showNotificationCenter && (
+                  <div className="absolute right-0 top-12 bg-white rounded-2xl border border-slate-100 shadow-xl p-4 w-72 md:w-80 z-30 space-y-3">
+                    <div className="flex justify-between items-center border-b pb-2">
+                      <h4 className="text-xs font-bold text-slate-900">Notificaciones</h4>
+                      <button onClick={() => setShowNotificationCenter(false)} className="text-slate-400 hover:text-slate-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                      {notifications.map((not) => (
+                        <div key={not.id} className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${not.unread ? 'bg-brand-green/10 border-brand-green/20 font-medium text-slate-800' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                          {not.text}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </header>
+
+            <div id="active-view-panel-container" className="flex-1 pb-10">
+              {activeTab === 'dashboard' && (
+                <DashboardView 
+                  currentUser={currentUser} 
+                  courses={courses} 
+                  liveClasses={liveClasses}
+                  setActiveTab={setActiveTab}
+                />
+              )}
+
+              {activeTab === 'courses' && (
+                <CoursesView 
+                  currentUser={currentUser} 
+                  courses={courses} 
+                  setActiveTab={setActiveTab}
+                  onGradeHomework={handleGradeHomework}
+                />
+              )}
+
+              {activeTab === 'classroom' && (
+                <VirtualClassroom currentUser={currentUser} />
+              )}
+
+              {activeTab === 'tutor' && (
+                <AIEducator currentUser={currentUser} />
+              )}
+
+              {activeTab === 'analytics' && (
+                <AnalyticsView />
+              )}
+
+              {activeTab === 'files' && (
+                <FilesView />
+              )}
+
+              {activeTab === 'settings' && (
+                <SettingsView 
+                  currentUser={currentUser} 
+                  onChangeProfile={handleUpdateProfile}
+                  onChangeRole={handleChangeRole}
+                />
+              )}
+            </div>
+
+            <footer id="campus-institutional-footer" className="mt-auto border-t border-slate-100 pt-4 flex flex-col md:flex-row justify-between items-center gap-3 text-[10px] text-slate-400 shrink-0 text-center md:text-left">
+              <p>© 2026 Instituto Técnico del Caribe (INTECA). Todos los derechos reservados.</p>
+              <div className="flex flex-wrap justify-center gap-2 md:gap-4">
+                <a href="#" onClick={(e) => { e.preventDefault(); alert("Auditoría de privacidad conforme a HIPAA / GDPR activa."); }} className="hover:underline">Privacidad</a>
+                <span className="hidden md:inline text-slate-200">|</span>
+                <a href="#" onClick={(e) => { e.preventDefault(); alert("Contacto: soporte@inteca.edu.co"); }} className="hover:underline">Soporte LMS</a>
+              </div>
+            </footer>
+
+          </main>
+        </div>
+      )}
+    </>
   );
 }
