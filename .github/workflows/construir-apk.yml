@@ -25,8 +25,8 @@ jobs:
       - name: 📦 Instalar dependencias web
         run: npm install
 
-      - name: 🛠️ Asegurar Motor de Capacitor
-        run: npm install @capacitor/cli @capacitor/android
+      - name: 🛠️ Asegurar Motor de Capacitor y Generador de Logos
+        run: npm install @capacitor/cli @capacitor/android @capacitor/assets
 
       - name: 🏗️ Construir Web (Vite)
         run: npm run build
@@ -37,6 +37,9 @@ jobs:
           npx cap init "Campus Virtual" "com.inteca.campus" --web-dir dist
           npx cap add android
           npx cap sync android
+
+      - name: 🎨 Generar Logo e Íconos
+        run: npx @capacitor/assets generate --android
 
       - name: 🩹 Resolver conflicto de Kotlin (Clases duplicadas)
         working-directory: ./android
