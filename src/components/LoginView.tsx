@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Mail, Lock, LogIn } from "lucide-react";
+
 // @ts-ignore
-import logoInteca from "../icon.png";
+import logoInteca from "../logo-inteca.png";
 
 interface LoginViewProps {
   onLoginSuccess: () => void;
