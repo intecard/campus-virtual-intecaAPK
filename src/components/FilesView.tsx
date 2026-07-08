@@ -6,14 +6,9 @@ import {
   FileDown, 
   Eye, 
   Clock, 
-  CheckCircle2, 
   Cloud,
-  ChevronRight,
   HardDrive,
-  X,
-  FileCode,
-  Image,
-  Video
+  X
 } from "lucide-react";
 import { CloudFile } from "../types";
 
@@ -56,7 +51,7 @@ export default function FilesView() {
         return (
           <div className="space-y-4">
             <div className="p-4 bg-slate-100 rounded-xl border border-slate-200 font-sans text-xs space-y-3 text-slate-700">
-              <p className="font-bold border-b pb-2 text-brand-blue uppercase">Guía de Procedimientos Clínicos Emergencias 2026</p>
+              <p className="font-bold border-b pb-2 text-emerald-600 uppercase">Guía de Procedimientos Clínicos Emergencias 2026</p>
               <p><strong>Sección 1.1:</strong> Definición de teleasistencia paramédica en tránsito.</p>
               <p>Al despachar la ambulancia en el Caribe rural, se debe establecer redundancia satelital de inmediato. Los signos vitales (ECG, Presión Arterial, Saturación de Oxígeno) se transmiten en ráfagas cifradas AES cada 3 segundos hacia el centro médico de base.</p>
               <p><strong>Criterio de Evaluación:</strong> Latencia aceptable máxima: 120ms. Si supera 400ms, conmutar a codificación de audio analógico comprimido.</p>
@@ -114,25 +109,23 @@ export default function FilesView() {
   };
 
   return (
-    <div id="files-view-root" className="space-y-6">
-      {/* Title */}
+    <div id="files-view-root" className="space-y-6 animate-in fade-in duration-500">
       <div id="files-view-title-flex" className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-mono font-bold text-brand-green uppercase tracking-wider">Gestor de Recursos de Aprendizaje</span>
+          <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Gestor de Recursos de Aprendizaje</span>
           <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Biblioteca Cloud Colectiva</h1>
         </div>
         
         <button
           onClick={triggerUpload}
-          className="bg-brand-green hover:bg-brand-green-hover text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-md shadow-brand-green/20 w-fit"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-5 rounded-xl transition-all flex items-center gap-2 shadow-md shadow-emerald-500/20 w-fit"
         >
           <Upload className="w-4 h-4" />
           <span>Subir Recurso Técnico</span>
         </button>
       </div>
 
-      {/* Cloud Providers Row */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="flex gap-3 overflow-x-auto whitespace-nowrap scrollbar-none pb-1">
         {[
           { name: 'All', label: 'Todos los Archivos', icon: HardDrive },
           { name: 'Drive', label: 'Google Drive', icon: Cloud },
@@ -146,16 +139,15 @@ export default function FilesView() {
             <button
               key={drv.name}
               onClick={() => setActiveDrive(drv.name as any)}
-              className={`p-4 rounded-2xl border text-left transition-all space-y-2 ${isActive ? 'bg-brand-blue border-brand-blue-light/50 text-white shadow-md' : 'bg-white border-slate-100 text-slate-700 hover:border-brand-green/30'}`}
+              className={`p-4 rounded-2xl border text-left transition-all space-y-2 shrink-0 ${isActive ? 'bg-slate-900 border-slate-800 text-white shadow-md' : 'bg-white border-slate-100 text-slate-700 hover:border-emerald-500/30'}`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? 'text-brand-green' : 'text-slate-400'}`} />
+              <Icon className={`w-5 h-5 ${isActive ? 'text-emerald-500' : 'text-slate-400'}`} />
               <p className="text-xs font-bold leading-none">{drv.label}</p>
             </button>
           );
         })}
       </div>
 
-      {/* Files Table List */}
       <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center text-xs text-slate-500 font-bold">
           <span>Nombre de Archivo</span>
@@ -192,7 +184,7 @@ export default function FilesView() {
                 <div className="flex gap-2">
                   <button 
                     onClick={() => setSelectedPreview(file)}
-                    className="p-1.5 bg-brand-green/10 text-brand-green rounded-lg hover:bg-brand-green hover:text-white transition-colors"
+                    className="p-1.5 bg-emerald-500/10 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
                   >
                     <Eye className="w-3.5 h-3.5" />
                   </button>
@@ -209,13 +201,12 @@ export default function FilesView() {
         </div>
       </div>
 
-      {/* Preview Modal Overlay */}
       {selectedPreview && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-100 space-y-6">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <FolderClosed className="w-5 h-5 text-brand-green" />
+                <FolderClosed className="w-5 h-5 text-emerald-600" />
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm md:text-base">{selectedPreview.name}</h3>
                   <p className="text-[10px] text-slate-400">Origen: {selectedPreview.source} • Versión {selectedPreview.version}.0</p>
@@ -229,7 +220,6 @@ export default function FilesView() {
               </button>
             </div>
 
-            {/* Modal Body content depending on type */}
             <div>
               {getFilePreviewContent(selectedPreview)}
             </div>

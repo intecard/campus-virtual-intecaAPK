@@ -1,13 +1,16 @@
-export type UserRole = 'student' | 'teacher' | 'admin' | 'parent';
+export type UserRole = 'student' | 'teacher' | 'admin' | 'observer';
 
 export interface UserProfile {
   id: string;
   name: string;
   email: string;
   role: UserRole;
-  avatar: string;
+  avatar?: string;
   academicId: string;
-  joinedDate: string;
+  joinedDate?: string;
+  phone?: string;
+  suspended?: boolean;
+  
   // Student metrics
   progress?: number;
   attendanceRate?: number;
@@ -18,12 +21,10 @@ export interface UserProfile {
     learningStyle: string;
     strengths: string[];
     weaknesses: string[];
-    dropoutRisk: 'Bajo' | 'Medio' | 'Alto';
+    dropoutRisk: string;
     dropoutReason?: string;
     studyPlan: string[];
   };
-  // Parent association
-  studentId?: string; // If role is parent, points to their child
 }
 
 export interface Lesson {
@@ -50,11 +51,13 @@ export interface Course {
   description: string;
   image: string;
   teacher: string;
-  progress: number;
-  modules: Module[];
-  studentsCount: number;
+  progress?: number;
+  studentsCount?: number;
   schedule: string;
   category: string;
+  duration?: string;
+  level?: string;
+  modules: Module[];
 }
 
 export interface QuizQuestion {
@@ -69,7 +72,7 @@ export interface Quiz {
   id: string;
   title: string;
   courseId: string;
-  timeLimit: number; // in minutes
+  timeLimit: number; // en minutos
   questions: QuizQuestion[];
 }
 
@@ -91,7 +94,7 @@ export interface HomeworkSubmission {
   feedback?: {
     score: number;
     critique: string;
-    plagiarismScore: number; // percentage
+    plagiarismScore: number; // porcentaje
     plagiarismReport: string;
     strengths: string[];
     improvements: string[];
@@ -114,7 +117,7 @@ export interface ChatMessage {
   id: string;
   sender: 'user' | 'ai' | 'system';
   text: string;
-  timestamp: string;
+  timestamp: string | Date | any; // Flexibilidad para integrarse con las marcas de tiempo de Firebase
 }
 
 export interface CloudFile {

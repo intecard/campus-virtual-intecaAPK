@@ -12,11 +12,7 @@ import {
   LogOut, 
   Palette, 
   Eraser, 
-  FileText,
-  Volume2,
-  CheckCircle2,
-  VolumeX,
-  Play
+  FileText
 } from "lucide-react";
 import { UserProfile } from "../types";
 
@@ -25,21 +21,17 @@ interface VirtualClassroomProps {
 }
 
 export default function VirtualClassroom({ currentUser }: VirtualClassroomProps) {
-  // Videocall states
   const [isCamOn, setIsCamOn] = useState(true);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [hasHandRaised, setHasHandRaised] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants' | 'whiteboard' | 'ai'>('ai');
 
-  // Interactive Whiteboard states
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [brushColor, setBrushColor] = useState('#10b981'); // Brand green
+  const [brushColor, setBrushColor] = useState('#10b981'); 
   const [brushSize, setBrushSize] = useState(4);
-  const [whiteboardEnabled, setWhiteboardEnabled] = useState(false);
 
-  // Chat message states
   const [chatMessages, setChatMessages] = useState([
     { sender: "Soporte Técnico", text: "¡Bienvenidos al Aula Virtual INTECA! La clase está siendo grabada.", time: "12:00" },
     { sender: "Prof. Mendoza", text: "Hola a todos, hoy analizaremos telemetría de emergencia rural.", time: "12:02" },
@@ -47,7 +39,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   ]);
   const [newMessage, setNewMessage] = useState("");
 
-  // AI Transcript and translation states
   const [selectedLanguage, setSelectedLanguage] = useState<'es' | 'en' | 'fr'>('es');
   const [transcripts, setTranscripts] = useState([
     {
@@ -65,7 +56,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   ]);
   const [aiSummary, setAiSummary] = useState("Soporte vital remoto coordinado. El tutor sugiere estudiar la resiliencia climática de enlaces microondas de 2.4 GHz en zonas rurales.");
 
-  // Drawing Canvas setup and mouse handlers
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -73,7 +63,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       if (ctx) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        // Fill canvas background to white
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
@@ -85,12 +74,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Get correct mouse coordinates inside canvas
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.strokeStyle = brushColor;
@@ -104,11 +90,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
     ctx.lineTo(x, y);
     ctx.stroke();
   };
@@ -136,8 +120,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   return (
-    <div id="virtual-classroom-root" className="space-y-6">
-      {/* Title */}
+    <div id="virtual-classroom-root" className="space-y-6 animate-in fade-in duration-500">
       <div>
         <span className="text-xs font-mono font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
           <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse"></span>
@@ -146,17 +129,14 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Sala Virtual: Redes Críticas y Teleasistencia</h1>
       </div>
 
-      {/* Main Grid: video box & sidebar utility */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left Col: HD Stream Video & Classroom action buttons */}
         <div className="lg:col-span-2 space-y-4">
           <div className="relative aspect-video bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-lg flex flex-col justify-between p-4">
             
-            {/* Top Indicator overlays */}
             <div className="flex justify-between items-center z-10 w-full">
               <span className="bg-black/60 backdrop-blur-md text-white text-[10px] px-3 py-1 rounded-full font-mono tracking-wider flex items-center gap-1.5 border border-white/5">
-                <Users className="w-3.5 h-3.5 text-brand-green" />
+                <Users className="w-3.5 h-3.5 text-emerald-500" />
                 <span>14 Alumnos Conectados</span>
               </span>
               <span className="bg-rose-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest animate-pulse">
@@ -164,19 +144,15 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </span>
             </div>
 
-            {/* Video streams / Active speaker */}
             <div className="absolute inset-0 flex items-center justify-center">
               {isCamOn ? (
                 <div className="w-full h-full relative">
-                  {/* Dynamic simulated presentation slide or active professor webcam */}
                   <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-center p-8">
-                    <div className="bg-brand-blue/30 p-6 rounded-3xl border border-brand-blue-light/50 max-w-md space-y-3">
-                      <Tv className="w-12 h-12 text-brand-green mx-auto" />
+                    <div className="bg-sky-900/30 p-6 rounded-3xl border border-sky-800/50 max-w-md space-y-3">
+                      <Tv className="w-12 h-12 text-emerald-500 mx-auto" />
                       <h4 className="font-display font-bold text-slate-100 text-sm md:text-base">Transmisión de Pantalla del Instructor</h4>
                       <p className="text-xs text-slate-400">Prof. Carlos Mendoza está compartiendo el diagrama de flujos de Telemetría Clínica para Emergencias Rurales.</p>
-                      
-                      {/* Diagram representation */}
-                      <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] text-brand-green flex justify-between items-center">
+                      <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] text-emerald-400 flex justify-between items-center">
                         <span>[ Ambulancia Rural ]</span>
                         <span className="text-white">-- AES-128-GCM --&gt;</span>
                         <span>[ Central Clínico ]</span>
@@ -184,8 +160,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     </div>
                   </div>
 
-                  {/* Professor Thumbnail */}
-                  <div className="absolute bottom-4 right-4 w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden border-2 border-brand-green shadow-lg z-10">
+                  <div className="absolute bottom-4 right-4 w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-lg z-10">
                     <img 
                       src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200" 
                       alt="Profesor" 
@@ -204,10 +179,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               )}
             </div>
 
-            {/* Bottom Student overlay if hand raised */}
             <div className="z-10 self-start mt-auto">
               {hasHandRaised && (
-                <div className="bg-brand-green text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg border border-brand-green/30">
+                <div className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg border border-emerald-500/30">
                   <Hand className="w-3.5 h-3.5 fill-white" />
                   <span>Has levantado la mano para participar</span>
                 </div>
@@ -215,7 +189,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             </div>
           </div>
 
-          {/* Call Controls panel */}
           <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap justify-between items-center gap-4">
             <div className="flex gap-2">
               <button 
@@ -232,23 +205,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </button>
               <button 
                 onClick={() => setIsScreenSharing(!isScreenSharing)}
-                className={`p-3 rounded-xl border transition-all ${isScreenSharing ? 'bg-brand-green/10 border-brand-green text-brand-green hover:bg-brand-green/20' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                className={`p-3 rounded-xl border transition-all ${isScreenSharing ? 'bg-emerald-50 border-emerald-500 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
               >
                 <Tv className="w-5 h-5" />
               </button>
               <button 
                 onClick={() => setHasHandRaised(!hasHandRaised)}
-                className={`p-3 rounded-xl border transition-all ${hasHandRaised ? 'bg-brand-green/10 border-brand-green text-brand-green hover:bg-brand-green/20' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
+                className={`p-3 rounded-xl border transition-all ${hasHandRaised ? 'bg-emerald-50 border-emerald-500 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
               >
                 <Hand className="w-5 h-5" />
               </button>
             </div>
 
             <div className="flex gap-2 text-xs">
-              <button className="bg-brand-blue hover:bg-brand-blue-light text-white font-bold py-2 px-4 rounded-xl transition-all">
+              <button className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm">
                 Asistencia Automática IA
               </button>
-              <button className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1.5">
+              <button className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1.5 shadow-sm">
                 <LogOut className="w-4 h-4" />
                 <span>Salir</span>
               </button>
@@ -256,10 +229,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           </div>
         </div>
 
-        {/* Right Col: Class Tabs Utility (Chat, whiteboard, transcripts) */}
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col h-[520px] overflow-hidden">
-          
-          {/* Tab buttons header */}
           <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1">
             <button
               onClick={() => setActiveTab('ai')}
@@ -281,10 +251,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             </button>
           </div>
 
-          {/* Active Tab Panel Content */}
           <div className="flex-1 p-4 overflow-y-auto">
-            
-            {/* 1. Chat Tab */}
             {activeTab === 'chat' && (
               <div id="classroom-chat" className="flex flex-col h-full justify-between">
                 <div className="space-y-3 overflow-y-auto max-h-[360px] pr-1">
@@ -294,7 +261,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         <span className="font-bold text-slate-900">{msg.sender}</span>
                         <span>{msg.time}</span>
                       </div>
-                      <p className="bg-slate-50 p-2.5 rounded-xl text-slate-700 leading-relaxed">{msg.text}</p>
+                      <p className="bg-slate-50 p-2.5 rounded-xl text-slate-700 leading-relaxed border border-slate-100">{msg.text}</p>
                     </div>
                   ))}
                 </div>
@@ -306,11 +273,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Escribe un mensaje al grupo..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:ring-1 focus:ring-brand-green focus:bg-white"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white"
                   />
                   <button
                     onClick={handleSendMessage}
-                    className="bg-brand-blue hover:bg-brand-blue-light text-white px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                    className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
                   >
                     Enviar
                   </button>
@@ -318,7 +285,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {/* 2. Whiteboard Tab */}
             {activeTab === 'whiteboard' && (
               <div id="classroom-whiteboard" className="flex flex-col h-full space-y-4 justify-between">
                 <div>
@@ -333,7 +299,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     </button>
                   </div>
                   
-                  {/* Drawing Area Canvas */}
                   <canvas
                     ref={canvasRef}
                     width={280}
@@ -346,20 +311,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   />
                 </div>
 
-                {/* Canvas controls */}
                 <div className="flex justify-between items-center pt-2 border-t border-slate-50">
                   <div className="flex gap-1.5">
-                    {['#10b981', '#0a3751', '#f59e0b', '#ef4444', '#000000'].map((col) => (
+                    {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
                       <button
                         key={col}
                         onClick={() => setBrushColor(col)}
-                        className={`w-6 h-6 rounded-full border transition-all ${brushColor === col ? 'scale-110 border-slate-600' : 'border-transparent'}`}
+                        className={`w-6 h-6 rounded-full border transition-all ${brushColor === col ? 'scale-110 border-slate-400' : 'border-transparent'}`}
                         style={{ backgroundColor: col }}
                       />
                     ))}
                   </div>
 
-                  {/* Size slider */}
                   <div className="flex items-center gap-1.5 text-xs text-slate-500">
                     <Palette className="w-3.5 h-3.5" />
                     <input
@@ -368,29 +331,27 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       max={12}
                       value={brushSize}
                       onChange={(e) => setBrushSize(Number(e.target.value))}
-                      className="w-16 accent-brand-green cursor-pointer"
+                      className="w-16 accent-emerald-500 cursor-pointer"
                     />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* 3. AI Transcription Tab */}
             {activeTab === 'ai' && (
               <div id="classroom-ai-transcript" className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-brand-green animate-pulse" />
+                    <Sparkles className="w-4 h-4 text-emerald-500 animate-pulse" />
                     <span className="text-xs font-bold text-slate-900">Transcripción y Traducción</span>
                   </div>
                   
-                  {/* Lang picker */}
                   <div className="flex border border-slate-200 rounded-lg overflow-hidden">
                     {(['es', 'en', 'fr'] as const).map((lang) => (
                       <button
                         key={lang}
                         onClick={() => setSelectedLanguage(lang)}
-                        className={`px-2 py-0.5 text-[9px] font-bold uppercase transition-colors ${selectedLanguage === lang ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-500'}`}
+                        className={`px-2 py-0.5 text-[9px] font-bold uppercase transition-colors ${selectedLanguage === lang ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}
                       >
                         {lang}
                       </button>
@@ -409,10 +370,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   ))}
                 </div>
 
-                {/* AI Summary card */}
-                <div className="p-3 bg-brand-blue/10 border border-brand-blue-light/20 rounded-2xl text-xs space-y-2">
-                  <div className="flex items-center gap-1.5 text-brand-blue font-bold">
-                    <FileText className="w-4 h-4 text-brand-green" />
+                <div className="p-3 bg-sky-50 border border-sky-100 rounded-2xl text-xs space-y-2">
+                  <div className="flex items-center gap-1.5 text-sky-700 font-bold">
+                    <FileText className="w-4 h-4 text-emerald-500" />
                     <span>Sugerencias de Tutor IA:</span>
                   </div>
                   <p className="text-slate-700 leading-relaxed text-[11px]">{aiSummary}</p>
