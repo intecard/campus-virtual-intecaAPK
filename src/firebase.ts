@@ -64,18 +64,18 @@ export async function createUserProfile(uid: string, data: Partial<UserProfile>)
     avatar: data.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(data.name || 'user')}`,
     academicId: data.academicId || `INTECA-2026-${Math.floor(1000 + Math.random() * 9000)}`,
     joinedDate: new Date().toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }),
-    progress: data.progress ?? (data.role === 'student' ? 0 : undefined),
-    attendanceRate: data.attendanceRate ?? (data.role === 'student' ? 100 : undefined),
-    averageGrade: data.averageGrade ?? (data.role === 'student' ? 0 : undefined),
-    aiProfile: data.aiProfile || (data.role === 'student' ? {
+    progress: data.progress ?? 0,
+    attendanceRate: data.attendanceRate ?? 100,
+    averageGrade: data.averageGrade ?? 0,
+    aiProfile: data.aiProfile || {
       performance: "Sincronizando...",
-      behavior: "Estudiante nuevo registrado en la plataforma",
-      learningStyle: "Por determinar mediante interacción",
+      behavior: "Usuario registrado en la plataforma",
+      learningStyle: "Por determinar",
       strengths: ["Registro Inicial"],
       weaknesses: [],
       dropoutRisk: "Bajo",
-      studyPlan: ["Explorar tu primer curso en la plataforma", "Completar tu información de perfil"]
-    } : undefined)
+      studyPlan: ["Explorar la plataforma"]
+    }
   };
 
   await setDoc(userRef, profile, { merge: true });
