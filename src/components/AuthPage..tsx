@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
   signInWithPopup,
+  signInWithCredential,
   getMultiFactorResolver,
   PhoneAuthProvider,
   PhoneMultiFactorGenerator,
@@ -13,6 +14,8 @@ import {
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { UserProfile, UserRole } from "../types";
 import { Loader2, AlertCircle, KeyRound } from "lucide-react";
+import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
 interface AuthPageProps {
   onAuthSuccess: (user: UserProfile) => void;
@@ -28,13 +31,11 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Estados para la verificación de Doble Factor (MFA) por SMS
   const [isMfaRequired, setIsMfaRequired] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [verificationId, setVerificationId] = useState("");
   const [mfaResolver, setMfaResolver] = useState<any>(null);
 
-  // FUNCIÓN PROTECTORA: Evita el error rojo de Firestore
   const generateSafeProfile = (uid: string, name: string, email: string, role: UserRole): UserProfile => {
     return {
       id: uid,
@@ -51,14 +52,12 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     };
   };
 
-  // Manejador centralizado cuando Firebase exige el segundo factor (SMS)
   const handleMfaRequired = async (mfaError: any) => {
     try {
       const resolver = getMultiFactorResolver(auth, mfaError);
       setMfaResolver(resolver);
       setIsMfaRequired(true);
 
-      // Inicializa el verificador ReCAPTCHA invisible obligatorio de Google para SMS
       const recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
         size: 'invisible'
       });
@@ -86,7 +85,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
     try {
       if (isLogin) {
-        // FLUJO DE LOGIN MANUAL
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const userDoc = await getDoc(doc(db, "users", userCredential.user.uid));
         
@@ -96,7 +94,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           setError("El usuario no tiene un perfil registrado en la base de datos.");
         }
       } else {
-        // FLUJO DE REGISTRO MANUAL
         if (!firstName || !lastName) throw new Error("Por favor ingresa tu nombre y apellido.");
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -128,7 +125,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // ENVÍO DEL CÓDIGO SMS A FIREBASE PARA RESOLVER EL LOGUEO
   const handleMfaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -153,15 +149,32 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE CORREGIDO CON POPUP
+  // INTERCEPTOR DE GOOGLE INTELIGENTE (NATIVO / WEB)
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError("");
-    const provider = new GoogleAuthProvider();
-    
+
     try {
-      const result = await signInWithPopup(auth, provider);
-      
+      let result;
+
+      if (Capacitor.isNativePlatform()) {
+        // 1. MODO APK (NATIVO ANDROID)
+        GoogleAuth.initialize({
+          clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: true,
+        });
+
+        const googleUser = await GoogleAuth.signIn();
+        const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
+        result = await signInWithCredential(auth, credential);
+
+      } else {
+        // 2. MODO WEB (NAVEGADOR)
+        const provider = new GoogleAuthProvider();
+        result = await signInWithPopup(auth, provider);
+      }
+
       if (result && result.user) {
         const userDoc = await getDoc(doc(db, "users", result.user.uid));
         if (userDoc.exists()) {
@@ -182,10 +195,10 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       console.error(err);
       if (err.code === 'auth/multi-factor-auth-required') {
         handleMfaRequired(err);
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        setLoading(false);
+      } else if (err.code === 'auth/popup-closed-by-user' || err.type === 'user_cancelled') {
+        setLoading(false); 
       } else {
-        setError("Error al iniciar sesión con Google. Intenta nuevamente.");
+        setError(`Error Google: ${err.message || "Fallo en la autenticación"}`);
         setLoading(false);
       }
     }
@@ -213,7 +226,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
   return (
     <div className="min-h-screen bg-[#07131f] flex flex-col items-center justify-center p-6 text-white font-sans">
-      {/* Contenedor invisible oculto para la verificación reCAPTCHA del servicio SMS */}
       <div id="recaptcha-container"></div>
 
       <div className="w-full max-w-md space-y-8">
@@ -249,7 +261,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           </div>
         )}
 
-        {/* INTERFAZ ALTERNATIVA DE SEGUNDO FACTOR (SMS) */}
         {isMfaRequired ? (
           <form onSubmit={handleMfaSubmit} className="space-y-6 bg-[#0d2136] border border-[#163554] p-6 rounded-2xl">
             <div className="flex flex-col items-center text-center space-y-2">
@@ -283,7 +294,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             </button>
           </form>
         ) : (
-          /* FORMULARIO TRADICIONAL DE REGISTRO E INICIO DE SESIÓN */
           <>
             <form onSubmit={handleAuth} className="space-y-4">
               {!isLogin && (

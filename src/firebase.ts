@@ -11,7 +11,7 @@ import {
   User as FirebaseUser
 } from "firebase/auth";
 import { 
-  initializeFirestore, // <-- CAMBIADO: Usamos initializeFirestore en lugar de getFirestore
+  initializeFirestore, 
   doc, 
   setDoc, 
   getDoc, 
@@ -45,9 +45,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// <-- CAMBIADO: Inicializamos Firestore forzando el Long Polling para evitar el error Offline en Android
+// <-- CAMBIADO: Auto-detección inteligente para evitar cuelgues en Capacitor
 export const db = initializeFirestore(app, {
-  experimentalForceLongPolling: true
+  experimentalAutoDetectLongPolling: true
 });
 
 // Google Auth Provider
