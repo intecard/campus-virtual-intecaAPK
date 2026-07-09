@@ -149,8 +149,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE INTELIGENTE (NATIVO / WEB)
-  const handleGoogleSignIn = async () => {
+  // INTERCEPTOR DE GOOGLE BLINDADO CONTRA RECARGAS DE PÁGINA
+  const handleGoogleSignIn = async (e?: React.MouseEvent) => {
+    if (e) e.preventDefault(); // Escudo anti-recarga
     setLoading(true);
     setError("");
 
@@ -158,7 +159,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       let result;
 
       if (Capacitor.isNativePlatform()) {
-        // 1. MODO APK (NATIVO ANDROID)
+        // 1. MODO APK
         GoogleAuth.initialize({
           clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
           scopes: ['profile', 'email'],
@@ -170,8 +171,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         result = await signInWithCredential(auth, credential);
 
       } else {
-        // 2. MODO WEB (NAVEGADOR)
+        // 2. MODO WEB
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
       }
 
@@ -204,7 +206,8 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  const handleDemoLogin = async (demoRole: UserRole) => {
+  const handleDemoLogin = async (demoRole: UserRole, e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
     setLoading(true);
     setError("");
     try {
@@ -329,7 +332,8 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             </form>
 
             <div className="space-y-4 pt-4 border-t border-[#163554]">
-              <button onClick={handleGoogleSignIn} disabled={loading} className="w-full bg-[#0d2136] border border-[#163554] text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 hover:bg-[#163554] transition-all">
+              {/* AQUÍ SE AÑADIÓ TYPE="BUTTON" PARA BLOQUEAR LA RECARGA */}
+              <button type="button" onClick={handleGoogleSignIn} disabled={loading} className="w-full bg-[#0d2136] border border-[#163554] text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 hover:bg-[#163554] transition-all">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                   <>
                     <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -345,16 +349,16 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
               <p className="text-center text-slate-400 text-sm">
                 {isLogin ? "¿Nuevo? " : "¿Ya tienes cuenta? "}
-                <button onClick={() => { setIsLogin(!isLogin); setError(""); }} className="text-emerald-500 font-bold hover:underline">
+                <button type="button" onClick={() => { setIsLogin(!isLogin); setError(""); }} className="text-emerald-500 font-bold hover:underline">
                   {isLogin ? "Regístrate" : "Inicia sesión"}
                 </button>
               </p>
 
               <div className="grid grid-cols-2 gap-4 pt-4">
-                <button onClick={() => handleDemoLogin('admin')} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
+                <button type="button" onClick={(e) => handleDemoLogin('admin', e)} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
                   Admin
                 </button>
-                <button onClick={() => handleDemoLogin('observer')} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
+                <button type="button" onClick={(e) => handleDemoLogin('observer', e)} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
                   Auditor
                 </button>
               </div>

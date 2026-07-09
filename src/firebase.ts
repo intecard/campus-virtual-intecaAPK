@@ -11,7 +11,8 @@ import {
   User as FirebaseUser
 } from "firebase/auth";
 import { 
-  initializeFirestore, 
+  initializeFirestore,
+  getFirestore, 
   doc, 
   setDoc, 
   getDoc, 
@@ -28,6 +29,7 @@ import {
   Timestamp,
   serverTimestamp
 } from "firebase/firestore";
+import { Capacitor } from '@capacitor/core';
 import { UserProfile, UserRole, Course, LiveClass, CloudFile, ChatMessage } from "./types";
 
 // Firebase Applet Credentials from firebase-applet-config.json
@@ -45,10 +47,10 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// <-- CAMBIADO: Auto-detección inteligente para evitar cuelgues en Capacitor
-export const db = initializeFirestore(app, {
-  experimentalAutoDetectLongPolling: true
-});
+// <-- CAMBIADO: Base de datos inteligente (Nativo vs Web)
+export const db = Capacitor.isNativePlatform()
+  ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
+  : getFirestore(app);
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
