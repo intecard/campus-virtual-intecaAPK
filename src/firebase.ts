@@ -11,8 +11,7 @@ import {
   User as FirebaseUser
 } from "firebase/auth";
 import { 
-  initializeFirestore,
-  getFirestore, 
+  getFirestore, // <-- VOLVEMOS AL ORIGINAL, 100% ESTÁNDAR
   doc, 
   setDoc, 
   getDoc, 
@@ -29,7 +28,6 @@ import {
   Timestamp,
   serverTimestamp
 } from "firebase/firestore";
-import { Capacitor } from '@capacitor/core';
 import { UserProfile, UserRole, Course, LiveClass, CloudFile, ChatMessage } from "./types";
 
 // Firebase Applet Credentials from firebase-applet-config.json
@@ -47,10 +45,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// <-- CAMBIADO: Base de datos inteligente (Nativo vs Web)
-export const db = Capacitor.isNativePlatform()
-  ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true })
-  : getFirestore(app);
+// <-- CAMBIADO: Conexión estándar. Ya no necesitamos trucos porque Capacitor ahora usa HTTPS seguro.
+export const db = getFirestore(app);
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
