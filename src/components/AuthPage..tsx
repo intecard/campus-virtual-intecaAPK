@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { auth, db } from "../firebase";
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
-  signInWithRedirect, 
-  getRedirectResult,
+  signInWithPopup,
   getMultiFactorResolver,
   PhoneAuthProvider,
   PhoneMultiFactorGenerator,
@@ -51,44 +50,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       suspended: false
     };
   };
-
-  // INTERCEPTOR DE GOOGLE: Atrapa al usuario cuando vuelve del Redirect
-  useEffect(() => {
-    const checkRedirect = async () => {
-      try {
-        setLoading(true);
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          const userDoc = await getDoc(doc(db, "users", result.user.uid));
-          if (userDoc.exists()) {
-            onAuthSuccess(userDoc.data() as UserProfile);
-          } else {
-            const newUser = generateSafeProfile(
-              result.user.uid,
-              result.user.displayName || "Usuario de Google",
-              result.user.email || "",
-              "student"
-            );
-            if (result.user.photoURL) newUser.avatar = result.user.photoURL;
-            await setDoc(doc(db, "users", result.user.uid), newUser);
-            onAuthSuccess(newUser);
-          }
-        } else {
-          setLoading(false);
-        }
-      } catch (err: any) {
-        console.error(err);
-        if (err.code === 'auth/multi-factor-auth-required') {
-          handleMfaRequired(err);
-        } else {
-          setError("Error al recuperar la sesión de Google.");
-          setLoading(false);
-        }
-      }
-    };
-    checkRedirect();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Manejador centralizado cuando Firebase exige el segundo factor (SMS)
   const handleMfaRequired = async (mfaError: any) => {
@@ -192,18 +153,39 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
+  // INTERCEPTOR DE GOOGLE CORREGIDO CON POPUP
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError("");
     const provider = new GoogleAuthProvider();
+    
     try {
-      await signInWithRedirect(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      
+      if (result && result.user) {
+        const userDoc = await getDoc(doc(db, "users", result.user.uid));
+        if (userDoc.exists()) {
+          onAuthSuccess(userDoc.data() as UserProfile);
+        } else {
+          const newUser = generateSafeProfile(
+            result.user.uid,
+            result.user.displayName || "Usuario de Google",
+            result.user.email || "",
+            "student"
+          );
+          if (result.user.photoURL) newUser.avatar = result.user.photoURL;
+          await setDoc(doc(db, "users", result.user.uid), newUser);
+          onAuthSuccess(newUser);
+        }
+      }
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/multi-factor-auth-required') {
         handleMfaRequired(err);
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        setLoading(false);
       } else {
-        setError("Error al iniciar la redirección con Google.");
+        setError("Error al iniciar sesión con Google. Intenta nuevamente.");
         setLoading(false);
       }
     }
