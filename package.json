@@ -41,5 +41,10 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "overrides": {
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1"
   }
 }
