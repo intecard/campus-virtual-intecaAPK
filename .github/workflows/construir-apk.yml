@@ -31,12 +31,8 @@ jobs:
       - name: 🏗️ Construir Web (Vite)
         run: npm run build
 
-      - name: 🤖 Generar estructura Android pura y limpia
-        run: |
-          rm capacitor.config.ts
-          npx cap init "Campus Virtual" "com.inteca.campus" --web-dir dist
-          npx cap add android
-          npx cap sync android
+      - name: 🤖 Sincronizar proyecto con Android
+        run: npx cap sync android
 
       - name: 🎨 Generar Logo e Íconos
         run: npx @capacitor/assets generate --android

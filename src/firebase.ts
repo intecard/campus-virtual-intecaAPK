@@ -11,7 +11,7 @@ import {
   User as FirebaseUser
 } from "firebase/auth";
 import { 
-  getFirestore, // <-- VOLVEMOS AL ORIGINAL, 100% ESTÁNDAR
+  getFirestore, 
   doc, 
   setDoc, 
   getDoc, 
@@ -45,8 +45,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// <-- CAMBIADO: Conexión estándar. Ya no necesitamos trucos porque Capacitor ahora usa HTTPS seguro.
-export const db = getFirestore(app);
+// <-- CORREGIDO: Ahora apunta directamente a tu base de datos específica para evitar el error "offline"
+export const db = getFirestore(app, "ai-studio-campusvirtualint-dbc5e5fa-0c2e-4740-85d5-91566cdb7d70");
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
