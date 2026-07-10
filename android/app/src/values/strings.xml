@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">INTECA Campus</string>
+    <string name="title_activity_main">INTECA Campus</string>
+    <string name="package_name">com.elyami3030.reactexample</string>
+    <string name="custom_url_scheme">com.elyami3030.reactexample</string>
+    <string name="server_client_id">266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com</string>
+</resources>

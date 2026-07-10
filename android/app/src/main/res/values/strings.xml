@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">INTECA Campus</string>
+    <string name="title_activity_main">INTECA Campus</string>
+    <string name="package_name">com.elyami3030.reactexample</string>
+    <string name="custom_url_scheme">com.elyami3030.reactexample</string>
+</resources>
