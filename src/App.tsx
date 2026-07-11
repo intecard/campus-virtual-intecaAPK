@@ -1,5 +1,11 @@
-import { useState } from "react";
-import { Bell, Menu, X } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { 
+  Bell, 
+  Sparkles, 
+  X,
+  Loader2,
+  Menu
+} from "lucide-react";
 import Sidebar from "./components/Sidebar";
 import DashboardView from "./components/DashboardView";
 import CoursesView from "./components/CoursesView";
@@ -8,101 +14,415 @@ import AIEducator from "./components/AIEducator";
 import AnalyticsView from "./components/AnalyticsView";
 import FilesView from "./components/FilesView";
 import SettingsView from "./components/SettingsView";
-import AuthPage from "./components/AuthPage.";
 import AdminView from "./components/AdminView";
+import AuthPage from "./components/AuthPage";
 import { UserRole, UserProfile, Course, LiveClass } from "./types";
 
+// Firebase Imports
+import { auth, db, seedInitialDatabaseIfEmpty, getUserProfile, createUserProfile, updateUserProfileInDB, logUserActivity } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { collection, onSnapshot, query, orderBy, getDocs } from "firebase/firestore";
+
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); 
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotificationCenter, setShowNotificationCenter] = useState(false);
 
-  // Datos de prueba (Se reemplazarán con datos de Firebase en el DashboardView)
-  const [courses, setCourses] = useState<Course[]>([]); 
-  const [liveClasses, setLiveClasses] = useState<LiveClass[]>([]);
+  const [liveClasses] = useState<LiveClass[]>([
+    {
+      id: "class_1",
+      title: "Clase Práctica: Reconocimiento de Principios Activos y Medicamentos de Control",
+      courseId: "c_farmacologia",
+      courseTitle: "Farmacología Aplicada para Visitadores Médicos",
+      teacher: "Carlos Mendoza",
+      startTime: "Transmitiendo Ahora",
+      duration: "1 hora",
+      isLive: true,
+      meetingId: "far-101-live-meet"
+    }
+  ]);
 
-  const handleAuthSuccess = (user: UserProfile) => {
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-  };
+  useEffect(() => {
+    const initializeAppAndAuth = async () => {
+      try {
+        await seedInitialDatabaseIfEmpty();
+      } catch (err) {
+        console.error("Failed to seed database during launch:", err);
+      }
 
-  const handleChangeRole = (role: UserRole) => {
+      const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+          try {
+            let profile = await getUserProfile(firebaseUser.uid);
+            if (!profile) {
+              profile = await createUserProfile(firebaseUser.uid, {
+                name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Estudiante INTECA",
+                email: firebaseUser.email || "",
+                role: "student",
+                avatar: firebaseUser.photoURL || undefined
+              });
+            }
+            setCurrentUser(profile);
+          } catch (err) {
+            console.error("Error retrieving user profile from Firestore:", err);
+          }
+        } else {
+          setCurrentUser(null);
+        }
+        setAuthLoading(false);
+      });
+
+      return unsubscribeAuth;
+    };
+
+    let unsub: any;
+    initializeAppAndAuth().then(u => unsub = u);
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!currentUser) return;
-    setCurrentUser({ ...currentUser, role });
-    setActiveTab("dashboard");
-    setIsMobileMenuOpen(false);
-  };
 
-  const handleUpdateProfile = (profileData: Partial<UserProfile>) => {
+    const loadCourses = async () => {
+      try {
+        const coursesCol = collection(db, "courses");
+        const coursesSnap = await getDocs(coursesCol);
+        const coursesList: Course[] = [];
+        coursesSnap.forEach((docSnap) => {
+          coursesList.push({ id: docSnap.id, ...docSnap.data() } as Course);
+        });
+        setCourses(coursesList);
+      } catch (err) {
+        console.error("Error fetching courses from Firestore:", err);
+      }
+    };
+    loadCourses();
+
+    const q = query(collection(db, "notifications"), orderBy("timestamp", "desc"));
+    const unsubscribeNotifications = onSnapshot(q, (snapshot) => {
+      const list: any[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.userId === "all" || data.userId === currentUser.id) {
+          list.push({
+            id: docSnap.id,
+            text: data.text,
+            unread: data.unread ?? true
+          });
+        }
+      });
+      setNotifications(list);
+    }, (err) => {
+      console.error("Notifications real-time listener failed:", err);
+    });
+
+    return () => {
+      unsubscribeNotifications();
+    };
+  }, [currentUser]);
+
+  const handleChangeRole = async (role: UserRole) => {
     if (!currentUser) return;
-    setCurrentUser({ ...currentUser, ...profileData });
+    
+    const roleAvatars: Record<UserRole, string> = {
+      student: "https://api.dicebear.com/7.x/adventurer/svg?seed=luis",
+      teacher: "https://api.dicebear.com/7.x/adventurer/svg?seed=carlos",
+      admin: "https://api.dicebear.com/7.x/adventurer/svg?seed=diana",
+      observer: "https://api.dicebear.com/7.x/adventurer/svg?seed=auditor"
+    };
+
+    const roleNames: Record<UserRole, string> = {
+      student: "Luis Ramírez Escalante",
+      teacher: "Prof. Carlos Mendoza",
+      admin: "Ing. Diana Guerrero (Admin)",
+      observer: "Auditor SISALRIL"
+    };
+
+    const roleAcademicIds: Record<UserRole, string> = {
+      student: "INTECA-2026-9481",
+      teacher: "INTECA-DOC-4281",
+      admin: "INTECA-ADM-001",
+      observer: "INTECA-GOV-001"
+    };
+
+    const updatedUser: UserProfile = {
+      ...currentUser,
+      role,
+      name: roleNames[role],
+      avatar: roleAvatars[role],
+      academicId: roleAcademicIds[role]
+    };
+
+    try {
+      await updateUserProfileInDB(currentUser.id, {
+        role,
+        name: updatedUser.name,
+        avatar: updatedUser.avatar,
+        academicId: updatedUser.academicId
+      });
+
+      await logUserActivity(
+        currentUser.id,
+        currentUser.name,
+        currentUser.email,
+        currentUser.role,
+        "ROLE_SWITCH_DEMO",
+        `Cambió temporalmente su rol a "${role.toUpperCase()}" en modo de prueba académica.`
+      );
+
+      setCurrentUser(updatedUser);
+      setActiveTab("dashboard");
+    } catch (err) {
+      console.error("Failed to switch role in Firestore:", err);
+    }
   };
 
-  if (!isAuthenticated || !currentUser) {
-    return <AuthPage onAuthSuccess={handleAuthSuccess} />;
+  const handleUpdateProfile = async (profileData: Partial<UserProfile>) => {
+    if (!currentUser) return;
+    try {
+      await updateUserProfileInDB(currentUser.id, profileData);
+      
+      await logUserActivity(
+        currentUser.id,
+        currentUser.name,
+        currentUser.email,
+        currentUser.role,
+        "PROFILE_UPDATE",
+        `Modificó datos personales en la configuración de su cuenta escolar.`
+      );
+
+      setCurrentUser((prev: UserProfile | null) => prev ? ({ ...prev, ...profileData }) : null);
+    } catch (err) {
+      console.error("Failed to update profile in Firestore:", err);
+    }
+  };
+
+  const handleGradeHomework = async (courseId: string, taskTitle: string, submittedText: string) => {
+    try {
+      const res = await fetch("/api/homework/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentName: currentUser?.name || "Estudiante",
+          taskTitle,
+          submittedText
+        })
+      });
+      const data = await res.json();
+      
+      if (currentUser) {
+        await logUserActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.email,
+          currentUser.role,
+          "AI_GRADING",
+          `Entregó tarea "${taskTitle}" para evaluación inmediata de IA (Puntaje obtenido: ${data.feedback?.score || 0}/100)`
+        );
+      }
+      return data;
+    } catch (err) {
+      console.error("Failed to fetch homework grading:", err);
+      throw err;
+    }
+  };
+
+  const handleLogout = async () => {
+    if (!currentUser) return;
+    try {
+      await logUserActivity(
+        currentUser.id,
+        currentUser.name,
+        currentUser.email,
+        currentUser.role,
+        "LOGOUT",
+        "Cierre de sesión seguro y exitoso"
+      );
+      await signOut(auth);
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+  };
+
+  const clearUnreadNotifications = async () => {
+    setNotifications((prev: any[]) => prev.map((n: any) => ({ ...n, unread: false })));
+  };
+
+  const unreadCount = notifications.filter((n: any) => n.unread).length;
+
+  if (authLoading) {
+    return (
+      <div id="auth-loading-splash" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-100 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
+        <div className="text-center">
+          <h2 className="text-sm font-bold tracking-wider text-white uppercase font-mono">Verificando Sesión Escolar</h2>
+          <p className="text-xs text-slate-400 mt-1">Negociación de credenciales seguras de INTECA...</p>
+        </div>
+      </div>
+    );
   }
 
+  if (!currentUser) {
+    // CORRECCIÓN APLICADA AQUÍ: Se asignó el tipo 'any' explícitamente a 'profile'
+    return <AuthPage onAuthSuccess={(profile: any) => setCurrentUser(profile)} />;
+  }
+
+  // CORRECCIÓN CLAVE: h-screen overflow-hidden fuerza a la app a comportarse como una ventana nativa de móvil.
   return (
-    <div id="campus-app-layout" className="min-h-screen bg-slate-50 text-slate-800 flex font-sans overflow-hidden">
+    <div id="campus-app-layout" className="h-screen w-full bg-slate-50 text-slate-800 flex font-sans overflow-hidden">
       
-      {isMobileMenuOpen && (
+      {/* Backdrop oscuro para móvil (Overlay). Cierra el menú al tocar afuera. Z-40 */}
+      {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-slate-900/50 z-40 md:hidden transition-opacity"
-          onClick={() => setIsMobileMenuOpen(false)}
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
+          onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      <div className={`fixed inset-y-0 left-0 z-50 transform ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:fixed transition-transform duration-300 ease-in-out`}>
+      {/* Contenedor del menú lateral. Z-50 (Siempre por encima del contenido y del overlay) */}
+      <div className={`fixed inset-y-0 left-0 z-50 transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static transition-transform duration-300 ease-in-out h-full`}>
         <Sidebar 
           activeTab={activeTab} 
-          setActiveTab={(tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }} 
+          setActiveTab={setActiveTab}
           currentUser={currentUser} 
           onChangeRole={handleChangeRole}
-          onLogout={() => setIsAuthenticated(false)}
+          onLogout={handleLogout}
+          onClose={() => setSidebarOpen(false)} // <-- Aquí entregamos la orden de cierre
         />
       </div>
 
-      <main id="main-content-container" className="flex-1 w-full md:ml-72 p-4 md:p-10 min-h-screen relative flex flex-col justify-between overflow-x-hidden overflow-y-auto">
+      {/* Main Content Area: h-full overflow-y-auto (Solo esto hace scroll) */}
+      <main id="main-content-container" className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative flex flex-col justify-between">
         
-        <header id="campus-top-header" className="flex justify-between items-center mb-6 md:mb-8 border-b border-slate-100 pb-4 shrink-0">
+        {/* Persistent Top Header */}
+        <header id="campus-top-header" className="flex justify-between items-center mb-6 md:mb-8 border-b border-slate-100 pb-4 shrink-0 gap-4">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsMobileMenuOpen(true)}
-              className="md:hidden p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-colors"
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 transition-colors shrink-0"
+              aria-label="Abrir menú"
             >
               <Menu className="w-5 h-5" />
             </button>
-            <div className="flex items-center gap-2">
-              <span className="hidden md:inline text-[10px] font-bold text-slate-400 font-mono tracking-widest uppercase">Campus Virtual</span>
-              <span className="hidden md:inline text-slate-300">/</span>
-              <span className="text-sm font-semibold text-emerald-600 capitalize">{activeTab}</span>
+            <div className="flex items-center gap-1.5 md:gap-2">
+              <span className="text-[10px] md:text-xs font-bold text-slate-400 font-mono tracking-widest uppercase">Campus Virtual</span>
+              <span className="text-slate-300">/</span>
+              <span className="text-[10px] md:text-xs font-semibold text-emerald-500 capitalize">{activeTab === 'admin' ? 'Auditoría y Roles' : activeTab}</span>
             </div>
           </div>
 
-          <button 
-            onClick={() => setShowNotificationCenter(!showNotificationCenter)}
-            className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all text-slate-600 relative"
-          >
-            <Bell className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-4 relative">
+            {currentUser.role === 'student' && (
+              <div className="hidden md:flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-xl">
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+                <span className="text-[11px] font-bold text-slate-700">Racha de estudio: <strong className="text-emerald-500">14 Días 🔥</strong></span>
+              </div>
+            )}
+
+            <button 
+              onClick={() => {
+                setShowNotificationCenter(!showNotificationCenter);
+                if (!showNotificationCenter) clearUnreadNotifications();
+              }}
+              className="p-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-all text-slate-600 relative shrink-0"
+            >
+              <Bell className="w-4.5 h-4.5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-rose-500 animate-bounce"></span>
+              )}
+            </button>
+
+            {showNotificationCenter && (
+              <div className="absolute right-0 top-12 bg-white rounded-2xl border border-slate-100 shadow-xl p-4 w-80 z-30 space-y-3">
+                <div className="flex justify-between items-center border-b pb-2">
+                  <h4 className="text-xs font-bold text-slate-900">Centro de Notificaciones</h4>
+                  <button onClick={() => setShowNotificationCenter(false)} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="space-y-2.5 max-h-[220px] overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <p className="text-[11px] text-slate-400 text-center py-4">No tiene notificaciones recientes.</p>
+                  ) : (
+                    notifications.map((not) => (
+                      <div key={not.id} className={`p-2.5 rounded-xl text-[11px] leading-relaxed border ${not.unread ? 'bg-emerald-500/10 border-emerald-500/20 font-semibold text-slate-800' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+                        {not.text}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
+        {/* View switching panel wrapper */}
         <div id="active-view-panel-container" className="flex-1 pb-10">
-          {activeTab === 'dashboard' && <DashboardView currentUser={currentUser} courses={courses} liveClasses={liveClasses} setActiveTab={setActiveTab} />}
-          {activeTab === 'courses' && <CoursesView currentUser={currentUser} courses={courses} setActiveTab={setActiveTab} />}
-          {activeTab === 'classroom' && <VirtualClassroom currentUser={currentUser} />}
-          {activeTab === 'tutor' && <AIEducator currentUser={currentUser} />}
-          {activeTab === 'analytics' && <AnalyticsView />}
-          {activeTab === 'files' && <FilesView />}
-          {activeTab === 'admin' && <AdminView currentUser={currentUser} />}
-          {activeTab === 'settings' && <SettingsView currentUser={currentUser} onChangeProfile={handleUpdateProfile} onChangeRole={handleChangeRole} />}
+          {activeTab === 'dashboard' && (
+            <DashboardView 
+              currentUser={currentUser} 
+              courses={courses} 
+              liveClasses={liveClasses}
+              setActiveTab={setActiveTab}
+            />
+          )}
+
+          {activeTab === 'courses' && (
+            <CoursesView 
+              currentUser={currentUser} 
+              courses={courses} 
+              setActiveTab={setActiveTab}
+              onGradeHomework={handleGradeHomework}
+            />
+          )}
+
+          {activeTab === 'classroom' && (
+            <VirtualClassroom currentUser={currentUser} />
+          )}
+
+          {activeTab === 'tutor' && (
+            <AIEducator currentUser={currentUser} />
+          )}
+
+          {activeTab === 'analytics' && (
+            <AnalyticsView />
+          )}
+
+          {activeTab === 'files' && (
+            <FilesView />
+          )}
+
+          {activeTab === 'admin' && (
+            <AdminView currentUser={currentUser} />
+          )}
+
+          {activeTab === 'settings' && (
+            <SettingsView 
+              currentUser={currentUser} 
+              onChangeProfile={handleUpdateProfile}
+              onChangeRole={handleChangeRole}
+            />
+          )}
         </div>
 
-        <footer id="campus-institutional-footer" className="mt-auto border-t border-slate-100 pt-4 text-[10px] text-slate-400 text-center md:text-left">
-          <p>© 2026 Instituto Técnico del Caribe (INTECA). Auditoría de Seguridad: Zero Trust Activa.</p>
+        {/* Institutional Footer */}
+        <footer id="campus-institutional-footer" className="mt-auto border-t border-slate-100 pt-4 flex flex-col md:flex-row justify-between items-center gap-3 text-[10px] text-slate-400 shrink-0">
+          <p>© 2026 Instituto Técnico del Caribe (INTECA). Todos los derechos reservados.</p>
+          <div className="flex gap-4">
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Auditoría de privacidad conforme a HIPAA / GDPR activa."); }} className="hover:underline">Políticas de Privacidad</a>
+            <span className="text-slate-200">|</span>
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Contacto: soporte@inteca.edu.co"); }} className="hover:underline">Soporte LMS</a>
+          </div>
         </footer>
+
       </main>
     </div>
   );

@@ -17,6 +17,7 @@ interface SidebarProps {
   currentUser: UserProfile;
   onChangeRole: (role: UserRole) => void;
   onLogout: () => void;
+  onClose?: () => void; // <-- Función para cerrar el menú en móviles
 }
 
 export default function Sidebar({ 
@@ -24,7 +25,8 @@ export default function Sidebar({
   setActiveTab, 
   currentUser, 
   onChangeRole,
-  onLogout 
+  onLogout,
+  onClose 
 }: SidebarProps) {
   
   const menuItems = [
@@ -43,11 +45,30 @@ export default function Sidebar({
     student: 'Estudiante',
     teacher: 'Profesor Titular',
     admin: 'Administrador TI',
-    observer: 'Auditor SISALRIL'
+    observer: 'Auditor / SISALRIL'
+  };
+
+  // <-- FUNCIÓN CLAVE: Cambia la vista y cierra el menú lateral -->
+  const handleNavigation = (tabId: string) => {
+    setActiveTab(tabId);
+    if (onClose) {
+      setTimeout(() => {
+        onClose();
+      }, 50); // Pequeño retraso para que la animación sea fluida
+    }
+  };
+
+  const handleRoleChange = (role: UserRole) => {
+    onChangeRole(role);
+    if (onClose) {
+      setTimeout(() => {
+        onClose();
+      }, 50);
+    }
   };
 
   return (
-    <aside id="sidebar-container" className="w-72 bg-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 shadow-xl z-20">
+    <aside id="sidebar-container" className="w-72 bg-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 shadow-2xl z-50">
       {/* INTECA Brand Header reproducing logo */}
       <div id="sidebar-logo-header" className="p-6 border-b border-slate-800 flex flex-col items-center">
         <div className="flex items-center gap-3">
@@ -96,7 +117,7 @@ export default function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => handleNavigation(item.id)} // <-- APLICADO EL MANEJADOR AQUÍ
               className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                 isActive 
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' 
@@ -118,7 +139,7 @@ export default function Sidebar({
         </div>
         <select
           value={currentUser.role}
-          onChange={(e) => onChangeRole(e.target.value as UserRole)}
+          onChange={(e) => handleRoleChange(e.target.value as UserRole)}
           className="w-full bg-slate-950 border border-slate-700 text-xs text-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
         >
           <option value="student">Estudiante</option>
