@@ -17,7 +17,8 @@ interface SidebarProps {
   currentUser: UserProfile;
   onChangeRole: (role: UserRole) => void;
   onLogout: () => void;
-  onClose?: () => void; // <-- Función para cerrar el menú en móviles
+  onClose?: () => void;
+  isOpen?: boolean; // <-- NUEVO: Propiedad para controlar si está abierto o cerrado
 }
 
 export default function Sidebar({ 
@@ -26,7 +27,8 @@ export default function Sidebar({
   currentUser, 
   onChangeRole,
   onLogout,
-  onClose 
+  onClose,
+  isOpen = false // <-- Por defecto cerrado en móviles
 }: SidebarProps) {
   
   const menuItems = [
@@ -48,13 +50,12 @@ export default function Sidebar({
     observer: 'Auditor / SISALRIL'
   };
 
-  // <-- FUNCIÓN CLAVE: Cambia la vista y cierra el menú lateral -->
   const handleNavigation = (tabId: string) => {
     setActiveTab(tabId);
     if (onClose) {
       setTimeout(() => {
         onClose();
-      }, 50); // Pequeño retraso para que la animación sea fluida
+      }, 150); // Ajusté un poco el tiempo para que se vea la animación al cerrar
     }
   };
 
@@ -63,12 +64,18 @@ export default function Sidebar({
     if (onClose) {
       setTimeout(() => {
         onClose();
-      }, 50);
+      }, 150);
     }
   };
 
   return (
-    <aside id="sidebar-container" className="w-72 bg-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 shadow-2xl z-50">
+    <aside 
+      id="sidebar-container" 
+      // <-- AQUÍ ESTÁ LA MAGIA RESPONSIVA: Animaciones y transformaciones para ocultar/mostrar
+      className={`w-72 bg-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
       {/* INTECA Brand Header reproducing logo */}
       <div id="sidebar-logo-header" className="p-6 border-b border-slate-800 flex flex-col items-center">
         <div className="flex items-center gap-3">
@@ -117,7 +124,7 @@ export default function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => handleNavigation(item.id)} // <-- APLICADO EL MANEJADOR AQUÍ
+              onClick={() => handleNavigation(item.id)}
               className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
                 isActive 
                   ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' 

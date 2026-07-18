@@ -271,11 +271,9 @@ export default function App() {
   }
 
   if (!currentUser) {
-    // CORRECCIÓN APLICADA AQUÍ: Se asignó el tipo 'any' explícitamente a 'profile'
     return <AuthPage onAuthSuccess={(profile: any) => setCurrentUser(profile)} />;
   }
 
-  // CORRECCIÓN CLAVE: h-screen overflow-hidden fuerza a la app a comportarse como una ventana nativa de móvil.
   return (
     <div id="campus-app-layout" className="h-screen w-full bg-slate-50 text-slate-800 flex font-sans overflow-hidden">
       
@@ -287,20 +285,19 @@ export default function App() {
         />
       )}
 
-      {/* Contenedor del menú lateral. Z-50 (Siempre por encima del contenido y del overlay) */}
-      <div className={`fixed inset-y-0 left-0 z-50 transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 lg:static transition-transform duration-300 ease-in-out h-full`}>
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab}
-          currentUser={currentUser} 
-          onChangeRole={handleChangeRole}
-          onLogout={handleLogout}
-          onClose={() => setSidebarOpen(false)} // <-- Aquí entregamos la orden de cierre
-        />
-      </div>
+      {/* Menú lateral liberado de su div contenedor para usar sus propias animaciones y recibiendo el estado isOpen */}
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab}
+        currentUser={currentUser} 
+        onChangeRole={handleChangeRole}
+        onLogout={handleLogout}
+        onClose={() => setSidebarOpen(false)}
+        isOpen={sidebarOpen}
+      />
 
-      {/* Main Content Area: h-full overflow-y-auto (Solo esto hace scroll) */}
-      <main id="main-content-container" className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative flex flex-col justify-between">
+      {/* Main Content Area: Se le agregó lg:ml-72 para que en PC deje el espacio del Sidebar y no quede por debajo */}
+      <main id="main-content-container" className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative flex flex-col justify-between lg:ml-72 transition-all duration-300">
         
         {/* Persistent Top Header */}
         <header id="campus-top-header" className="flex justify-between items-center mb-6 md:mb-8 border-b border-slate-100 pb-4 shrink-0 gap-4">
