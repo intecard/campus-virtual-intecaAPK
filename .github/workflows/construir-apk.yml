@@ -11,10 +11,10 @@ jobs:
       - name: 📥 Descargar código
         uses: actions/checkout@v4
 
-      - name: 🟢 Configurar Node.js (Versión 20)
+      - name: 🟢 Configurar Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '20'
 
       - name: ☕ Configurar Java 21
         uses: actions/setup-java@v4
@@ -22,11 +22,14 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
+        run: npm pkg delete overrides
+
       - name: 📦 Instalar dependencias web
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: 🛠️ Asegurar Motor de Capacitor y Generador de Logos
-        run: npm install @capacitor/cli @capacitor/android @capacitor/assets
+        run: npm install @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
 
       - name: 🏗️ Construir Web (Vite)
         run: npm run build
@@ -35,7 +38,7 @@ jobs:
         run: npx cap sync android
 
       - name: 🎨 Generar Logo e Íconos
-        run: npm config set force true && npx @capacitor/assets generate --android
+        run: npx @capacitor/assets generate --android
 
       - name: 🩹 Resolver conflicto de Kotlin (Clases duplicadas)
         working-directory: ./android
