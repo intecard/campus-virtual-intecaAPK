@@ -35,7 +35,7 @@ jobs:
         run: npx cap sync android
 
       - name: 🎨 Generar Logo e Íconos
-        run: npx @capacitor/assets generate --android
+        run: npm config set force true && npx @capacitor/assets generate --android
 
       - name: 🩹 Resolver conflicto de Kotlin (Clases duplicadas)
         working-directory: ./android
