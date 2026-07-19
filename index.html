@@ -1,30 +1,24 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/icon.png" />
+    
+    <!-- Configuración estricta de Viewport para que parezca una App Nativa -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    
+    <!-- Color de la barra de estado del celular -->
+    <meta name="theme-color" content="#0f172a" />
+    
+    <!-- Metadatos de la Institución -->
+    <meta name="description" content="Campus Virtual INTECA - Gestión Académica y Telemedicina" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
     <title>Campus Virtual INTECA</title>
   </head>
   <body>
-    <script>
-      // Atrapa errores de codigo y carga
-      window.addEventListener('error', function(event) {
-        var errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'color: white; background: red; padding: 20px; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; font-size: 14px; font-family: monospace; word-wrap: break-word; overflow-y: auto;';
-        errorDiv.innerHTML = '🕵️ ERROR DETECTADO:<br><br>' + event.message + '<br><br>Archivo: ' + event.filename + '<br>Línea: ' + event.lineno;
-        document.body.appendChild(errorDiv);
-      });
-
-      // Atrapa errores asincronos (como bases de datos o promesas)
-      window.addEventListener('unhandledrejection', function(event) {
-        var errorDiv = document.createElement('div');
-        errorDiv.style.cssText = 'color: white; background: darkred; padding: 20px; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 9999; font-size: 14px; font-family: monospace; word-wrap: break-word; overflow-y: auto;';
-        errorDiv.innerHTML = '🕵️ PROMESA RECHAZADA:<br><br>' + (event.reason ? event.reason.toString() : 'Error asíncrono desconocido');
-        document.body.appendChild(errorDiv);
-      });
-    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

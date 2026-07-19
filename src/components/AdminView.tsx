@@ -3,7 +3,7 @@ import {
   Users, 
   ShieldAlert, 
   Activity, 
-  FileSpreadsheet, 
+  FileSpreadsheet,  
   FileDown, 
   Printer, 
   Settings, 
@@ -77,6 +77,9 @@ export default function AdminView({ currentUser }: AdminViewProps) {
     admins: 0,
     suspended: 0
   });
+
+  // REGLA DE ORO 1: Identificar si el usuario actual es el Master Admin absoluto
+  const isMaster = currentUser.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
 
   // Load database information on mount
   const fetchData = async () => {
@@ -482,11 +485,27 @@ export default function AdminView({ currentUser }: AdminViewProps) {
            (l.details || "").toLowerCase().includes(logSearch.toLowerCase());
   });
 
+  // ESCUDO DE PROTECCIÓN: Si un estudiante llega a esta vista por error, lo bloquea.
+  if (currentUser.role !== 'admin') {
+    return (
+      <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm m-6 animate-in zoom-in-95">
+        <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
+        <h2 className="text-xl font-bold text-slate-800">Acceso Restringido</h2>
+        <p className="text-slate-500 mt-2">Solo el personal autorizado de Administración TI puede acceder a este módulo.</p>
+      </div>
+    );
+  }
+
   return (
     <div id="admin-view-root" className="space-y-6 animate-in fade-in duration-500">
+      
+      {/* HEADER PRINCIPAL Y ETIQUETA MASTER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <span className="text-xs font-mono font-bold text-sky-500 uppercase tracking-wider">Módulo de Control Jerárquico</span>
+          <span className="text-xs font-mono font-bold text-sky-500 uppercase tracking-wider flex items-center gap-2">
+            Módulo de Control Jerárquico 
+            {isMaster && <span className="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[9px] tracking-widest shadow-sm shadow-rose-500/20">MASTER ADMIN</span>}
+          </span>
           <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Consola de Auditoría y Roles</h1>
         </div>
         <button
@@ -702,65 +721,95 @@ export default function AdminView({ currentUser }: AdminViewProps) {
             </div>
           ) : (
             <>
+              {/* TABLA DE USUARIOS: VISTA MÓVIL BLINDADA */}
               <div className="block md:hidden divide-y divide-slate-100">
-                {filteredUsers.map((u: any) => (
-                  <div key={u.id} className={`p-4 space-y-3 ${u.suspended ? 'bg-rose-50/20' : ''}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <img src={u.avatar} alt="" className="w-10 h-10 rounded-full bg-slate-100 shrink-0" />
+                {filteredUsers.map((u: any) => {
+                  
+                  // REGLA DE SEGURIDAD INDIVIDUAL
+                  const isTargetMaster = u.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+                  const canEdit = isMaster || (!isTargetMaster && u.role !== 'admin');
+
+                  return (
+                    <div key={u.id} className={`p-4 space-y-3 ${u.suspended ? 'bg-rose-50/20' : ''}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <img src={u.avatar} alt="" className="w-10 h-10 rounded-full bg-slate-100 shrink-0" />
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm leading-snug">{u.name}</p>
+                            <p className="text-[10px] text-slate-400 font-semibold">{u.email}</p>
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-slate-800 text-xs bg-slate-100 px-2 py-0.5 rounded">
+                          {u.academicId}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/50 text-xs">
                         <div>
-                          <p className="font-bold text-slate-900 text-sm leading-snug">{u.name}</p>
-                          <p className="text-[10px] text-slate-400 font-semibold">{u.email}</p>
+                          <span className="text-slate-400 block text-[9px] uppercase font-bold">Teléfono</span>
+                          <span className="text-slate-700 font-medium">{u.phone}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[9px] uppercase font-bold">Registro</span>
+                          <span className="text-slate-700 font-medium">{u.joinedDate}</span>
                         </div>
                       </div>
-                      <span className="font-mono font-bold text-slate-800 text-xs bg-slate-100 px-2 py-0.5 rounded">
-                        {u.academicId}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100/50 text-xs">
-                      <div>
-                        <span className="text-slate-400 block text-[9px] uppercase font-bold">Teléfono</span>
-                        <span className="text-slate-700 font-medium">{u.phone}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[9px] uppercase font-bold">Registro</span>
-                        <span className="text-slate-700 font-medium">{u.joinedDate}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 pt-2">
-                      <div className="flex-1">
-                        <span className="text-slate-400 block text-[9px] uppercase font-bold mb-1">Rol Institucional</span>
-                        <select
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole, u.name)}
-                          className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
-                        >
-                          <option value="student">Estudiante</option>
-                          <option value="teacher">Profesor</option>
-                          <option value="observer">Auditor / Regulador</option>
-                          <option value="admin">Administrador TI</option>
-                        </select>
-                      </div>
-                      <div className="self-end">
-                        <button
-                          onClick={() => handleToggleSuspension(u.id, u.suspended, u.name)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                            u.suspended 
-                              ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
-                              : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                          }`}
-                        >
-                          {u.suspended ? (
-                            <><UserCheck className="w-3.5 h-3.5" /> <span>Activar</span></>
+                      <div className="flex items-center justify-between gap-3 pt-2">
+                        <div className="flex-1">
+                          <span className="text-slate-400 block text-[9px] uppercase font-bold mb-1">Rol Institucional</span>
+                          
+                          {/* CONTROL DE ROLES BLINDADO (MÓVIL) */}
+                          {isTargetMaster ? (
+                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-100 flex items-center gap-1.5 w-fit">
+                              <ShieldCheck className="w-3.5 h-3.5" /> Cuenta Maestra
+                            </span>
+                          ) : !canEdit ? (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200 block w-fit">
+                              Bloqueado (Solo Master)
+                            </span>
                           ) : (
-                            <><UserX className="w-3.5 h-3.5" /> <span>Suspender</span></>
+                            <select
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole, u.name)}
+                              className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                            >
+                              <option value="student">Estudiante</option>
+                              <option value="teacher">Profesor</option>
+                              <option value="observer">Auditor / Regulador</option>
+                              {isMaster && <option value="admin">Administrador TI</option>}
+                            </select>
                           )}
-                        </button>
+                        </div>
+                        
+                        <div className="self-end">
+                          {/* CONTROL DE SUSPENSIÓN BLINDADO (MÓVIL) */}
+                          {(!isTargetMaster && canEdit) ? (
+                            <button
+                              onClick={() => handleToggleSuspension(u.id, u.suspended, u.name)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                                u.suspended 
+                                  ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
+                                  : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                              }`}
+                            >
+                              {u.suspended ? (
+                                <><UserCheck className="w-3.5 h-3.5" /> <span>Activar</span></>
+                              ) : (
+                                <><UserX className="w-3.5 h-3.5" /> <span>Suspender</span></>
+                              )}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-100 text-slate-400 cursor-not-allowed">
+                              <ShieldAlert className="w-3.5 h-3.5" /> <span>Protegido</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+
+              {/* TABLA DE USUARIOS: VISTA DESKTOP BLINDADA */}
               <table className="w-full text-left text-xs text-slate-700 hidden md:table">
                 <thead className="bg-slate-50 font-bold text-slate-600 border-b border-slate-100">
                   <tr>
@@ -773,49 +822,74 @@ export default function AdminView({ currentUser }: AdminViewProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredUsers.map((u: any) => (
-                    <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.suspended ? 'bg-rose-50/20' : ''}`}>
-                      <td className="p-4 font-mono font-bold text-slate-900">{u.academicId}</td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <img src={u.avatar} alt="" className="w-8 h-8 rounded-full bg-slate-100 shrink-0" />
-                          <div>
-                            <p className="font-bold text-slate-900 leading-none">{u.name}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5 font-semibold">{u.email}</p>
+                  {filteredUsers.map((u: any) => {
+                    
+                    // REGLA DE SEGURIDAD INDIVIDUAL
+                    const isTargetMaster = u.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+                    const canEdit = isMaster || (!isTargetMaster && u.role !== 'admin');
+
+                    return (
+                      <tr key={u.id} className={`hover:bg-slate-50 transition-colors ${u.suspended ? 'bg-rose-50/20' : ''}`}>
+                        <td className="p-4 font-mono font-bold text-slate-900">{u.academicId}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <img src={u.avatar} alt="" className="w-8 h-8 rounded-full bg-slate-100 shrink-0" />
+                            <div>
+                              <p className="font-bold text-slate-900 leading-none">{u.name}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5 font-semibold">{u.email}</p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-slate-500 font-medium">{u.phone}</td>
-                      <td className="p-4">
-                        <select
-                          value={u.role}
-                          onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole, u.name)}
-                          className="bg-white border border-slate-200 rounded-lg p-1 text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-500"
-                        >
-                          <option value="student">Estudiante</option>
-                          <option value="teacher">Profesor</option>
-                          <option value="observer">Auditor / Regulador</option>
-                          <option value="admin">Administrador TI</option>
-                        </select>
-                      </td>
-                      <td className="p-4 text-slate-400 font-medium">{u.joinedDate}</td>
-                      <td className="p-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => handleToggleSuspension(u.id, u.suspended, u.name)}
-                            title={u.suspended ? "Activar cuenta" : "Suspender cuenta"}
-                            className={`p-1.5 rounded-lg transition-colors ${
-                              u.suspended 
-                                ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
-                                : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
-                            }`}
-                          >
-                            {u.suspended ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="p-4 text-slate-500 font-medium">{u.phone}</td>
+                        <td className="p-4">
+                          {/* CONTROL DE ROLES BLINDADO (DESKTOP) */}
+                          {isTargetMaster ? (
+                            <span className="text-[10px] text-rose-600 font-bold bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-100 flex items-center gap-1.5 w-fit">
+                              <ShieldCheck className="w-3.5 h-3.5" /> Maestra
+                            </span>
+                          ) : !canEdit ? (
+                            <span className="text-[10px] text-slate-400 font-bold bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-200">
+                              Bloqueado
+                            </span>
+                          ) : (
+                            <select
+                              value={u.role}
+                              onChange={(e) => handleRoleChange(u.id, e.target.value as UserRole, u.name)}
+                              className="bg-white border border-slate-200 rounded-lg p-1.5 text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:ring-1 focus:ring-sky-500"
+                            >
+                              <option value="student">Estudiante</option>
+                              <option value="teacher">Profesor</option>
+                              <option value="observer">Auditor / Regulador</option>
+                              {isMaster && <option value="admin">Administrador TI</option>}
+                            </select>
+                          )}
+                        </td>
+                        <td className="p-4 text-slate-400 font-medium">{u.joinedDate}</td>
+                        <td className="p-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {/* CONTROL DE SUSPENSIÓN BLINDADO (DESKTOP) */}
+                            {(!isTargetMaster && canEdit) ? (
+                              <button
+                                onClick={() => handleToggleSuspension(u.id, u.suspended, u.name)}
+                                title={u.suspended ? "Activar cuenta" : "Suspender cuenta"}
+                                className={`p-1.5 rounded-lg transition-colors ${
+                                  u.suspended 
+                                    ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' 
+                                    : 'bg-rose-50 text-rose-600 hover:bg-rose-100'
+                                }`}
+                              >
+                                {u.suspended ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                              </button>
+                            ) : (
+                              <button disabled className="p-1.5 rounded-lg bg-slate-100 text-slate-300 cursor-not-allowed" title="Acción bloqueada">
+                                <ShieldAlert className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </>

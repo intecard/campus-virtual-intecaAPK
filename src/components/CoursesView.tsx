@@ -1,20 +1,11 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { 
-  BookOpen, 
-  ChevronRight, 
-  FolderDown, 
-  HelpCircle, 
-  Clock, 
-  AlertTriangle, 
-  ArrowLeft,
-  Sparkles,
-  Award,
-  Loader2,
-  FileText,
-  Video,
-  Send
+  BookOpen, ChevronRight, FolderDown, HelpCircle, Clock, AlertTriangle, ArrowLeft,
+  Sparkles, Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, Link as LinkIcon, X
 } from "lucide-react";
 import { Course, UserProfile, QuizQuestion } from "../types";
+import { db } from "../firebase";
+import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 interface CoursesViewProps {
   currentUser: UserProfile;
@@ -23,17 +14,27 @@ interface CoursesViewProps {
   onGradeHomework?: (courseId: string, taskTitle: string, submissionText: string) => Promise<any>;
 }
 
-export default function CoursesView({ 
-  currentUser, 
-  courses, 
-  setActiveTab,
-  onGradeHomework 
-}: CoursesViewProps) {
+export default function CoursesView({ currentUser, courses, setActiveTab, onGradeHomework }: CoursesViewProps) {
+  
+  // ==========================================
+  // ESTADOS DE NAVEGACIÓN Y VISTAS
+  // ==========================================
+  const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio'>('catalog');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'syllabus' | 'quizzes' | 'homework' | 'lti'>('syllabus');
   
-  // Quiz specific states
+  // ==========================================
+  // ESTADOS DEL CONSTRUCTOR DE CURSOS (STUDIO)
+  // ==========================================
+  const [isSaving, setIsSaving] = useState(false);
+  const [courseForm, setCourseForm] = useState<Partial<Course>>({
+    title: "", code: "INT-", category: "", description: "", duration: "4 semanas", level: "Técnico", teacher: currentUser.name, image: "", modules: []
+  });
+
+  // ==========================================
+  // ESTADOS DE EXÁMENES IA Y TAREAS
+  // ==========================================
   const [activeQuizTopic, setActiveQuizTopic] = useState<string | null>(null);
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
@@ -45,11 +46,93 @@ export default function CoursesView({
   const [timerCount, setTimerCount] = useState(120); 
   const [timerInterval, setTimerInterval] = useState<any>(null);
 
-  // Homework submitting state
   const [submittingHomework, setSubmittingHomework] = useState(false);
   const [homeworkText, setHomeworkText] = useState("");
   const [homeworkGradedResult, setHomeworkGradedResult] = useState<any>(null);
 
+  // ==========================================
+  // FUNCIONES DEL CONSTRUCTOR (STUDIO)
+  // ==========================================
+  const openStudio = (courseToEdit?: Course) => {
+    if (courseToEdit) {
+      setCourseForm(courseToEdit);
+    } else {
+      setCourseForm({
+        title: "", code: "INT-", category: "", description: "", duration: "4 semanas", level: "Técnico", teacher: currentUser.name, image: "", modules: []
+      });
+    }
+    setViewMode('studio');
+  };
+
+  const handleAddModule = () => {
+    const newModule = {
+      id: `mod_${Date.now()}`,
+      title: "Nuevo Módulo",
+      description: "Descripción breve de esta unidad",
+      lessons: []
+    };
+    setCourseForm(prev => ({ ...prev, modules: [...(prev.modules || []), newModule] }));
+  };
+
+  const handleAddLesson = (moduleId: string) => {
+    const newLesson: any = {
+      id: `les_${Date.now()}`,
+      title: "Nueva Lección",
+      description: "Instrucciones",
+      type: "video",
+      duration: "10 min",
+      contentUrl: "" 
+    };
+    
+    setCourseForm(prev => ({
+      ...prev,
+      modules: prev.modules?.map(m => m.id === moduleId ? { ...m, lessons: [...m.lessons, newLesson] } : m)
+    }));
+  };
+
+  const saveCourseToFirebase = async () => {
+    if (!courseForm.title || !courseForm.code) {
+      alert("El título y el código del curso son obligatorios.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (courseForm.id) {
+        const courseRef = doc(db, "courses", courseForm.id);
+        await updateDoc(courseRef, courseForm);
+        alert("Curso actualizado con éxito. (Los cambios ya están en vivo)");
+      } else {
+        await addDoc(collection(db, "courses"), {
+          ...courseForm,
+          progress: 0,
+          studentsCount: 0
+        });
+        alert("¡Curso creado y publicado en la plataforma INTECA!");
+      }
+      setViewMode('catalog');
+    } catch (error) {
+      console.error("Error guardando curso:", error);
+      alert("Hubo un error al conectar con Firebase.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteCourse = async (courseId: string) => {
+    if (window.confirm("¿Estás seguro de que deseas eliminar este curso de toda la base de datos? Esto borrará módulos, lecciones y datos asociados.")) {
+      try {
+        await deleteDoc(doc(db, "courses", courseId));
+        alert("Curso eliminado definitivamente.");
+        setViewMode('catalog');
+      } catch (error) {
+        console.error("Error eliminando curso:", error);
+      }
+    }
+  };
+
+  // ==========================================
+  // FUNCIONES DE EXÁMENES Y TAREAS
+  // ==========================================
   const startQuizFlow = async (topic: string) => {
     setLoadingQuiz(true);
     setQuizError(null);
@@ -81,10 +164,10 @@ export default function CoursesView({
         }, 1000);
         setTimerInterval(interval);
       } else {
-        setQuizError("No se pudieron generar preguntas válidas de IA. Por favor intenta de nuevo.");
+        setQuizError("La Inteligencia Artificial no pudo procesar este tema. Intenta con un tema más descriptivo.");
       }
     } catch (err) {
-      setQuizError("Ocurrió un error al contactar al generador de IA. Asegúrate de tener conexión a la red.");
+      setQuizError("Ocurrió un error al contactar al motor de IA de INTECA. Verifica tu conexión a internet.");
     } finally {
       setLoadingQuiz(false);
     }
@@ -117,7 +200,7 @@ export default function CoursesView({
 
   const submitHomework = async (taskTitle: string) => {
     if (!homeworkText.trim() || homeworkText.trim().length < 15) {
-      alert("Por favor, redacta una respuesta académica detallada (mínimo 15 caracteres).");
+      alert("Tu entrega es muy corta. Por favor, elabora una respuesta técnica adecuada.");
       return;
     }
     setSubmittingHomework(true);
@@ -134,549 +217,786 @@ export default function CoursesView({
     }
   };
 
-  const renderCourseList = () => (
-    <div id="course-list-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {courses.map((course) => (
-        <div 
-          key={course.id}
-          className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group"
-        >
-          <div className="relative h-48 bg-slate-900 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
-            <img 
-              src={course.image} 
-              alt={course.title} 
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-            />
-            <div className="absolute top-4 left-4 z-10">
-              <span className="text-[10px] bg-emerald-500 text-white font-mono font-bold uppercase px-3 py-1 rounded-full border border-emerald-500/40">
-                {course.category}
-              </span>
-            </div>
-            <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
-              <span className="text-[10px] font-mono font-bold tracking-wider opacity-80">{course.code}</span>
-              <h3 className="font-display font-bold text-lg mt-1 leading-snug">{course.title}</h3>
-            </div>
-          </div>
-
-          <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-            <p className="text-slate-600 text-xs leading-relaxed">{course.description}</p>
-            
-            {(course.duration || course.level) && (
-              <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
-                {course.duration && (
-                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                    <Clock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                    <span>Duración: <strong className="text-slate-700">{course.duration}</strong></span>
-                  </div>
-                )}
-                {course.level && (
-                  <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                    <Award className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                    <span>Nivel: <strong className="text-slate-700">{course.level}</strong></span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>Progreso</span>
-                <span className="font-bold text-slate-800">{course.progress}%</span>
-              </div>
-              <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-emerald-500 h-full" style={{ width: `${course.progress}%` }}></div>
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-              <span className="text-xs text-slate-400 font-medium">Titular: Prof. {course.teacher}</span>
-              <button
-                onClick={() => {
-                  setSelectedCourse(course);
-                  setExpandedModule(course.modules[0]?.id || null);
-                  setActiveSubTab('syllabus');
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1"
-              >
-                <span>Acceder</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
+  // ==========================================
+  // RENDER 1: CATÁLOGO PRINCIPAL
+  // ==========================================
+  const renderCatalog = () => (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Instituto Técnico del Caribe</span>
+          <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Cursos (LMS)</h1>
         </div>
-      ))}
+        
+        {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+          <button 
+            onClick={() => openStudio()}
+            className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Crear Nuevo Curso</span>
+          </button>
+        )}
+      </div>
+
+      {courses.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
+          <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-slate-700">Catálogo Inicializado en 0</h3>
+          <p className="text-sm text-slate-500 mt-2">Utiliza el botón "Crear Nuevo Curso" para subir tu primer programa a la base de datos real.</p>
+        </div>
+      ) : (
+        <div id="course-list-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {courses.map((course) => (
+            <div 
+              key={course.id}
+              className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group relative cursor-pointer"
+              onClick={() => {
+                setSelectedCourse(course);
+                setExpandedModule(course.modules && course.modules.length > 0 ? course.modules[0].id : null);
+                setActiveSubTab('syllabus');
+                setViewMode('detail');
+              }}
+            >
+              {(currentUser.role === 'admin' || currentUser.name === course.teacher) && (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); openStudio(course); }}
+                  className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 hover:bg-white transition-all"
+                  title="Editar Curso"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+              )}
+
+              <div className="relative h-48 bg-slate-900 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
+                <img 
+                  src={course.image || "https://images.unsplash.com/photo-1576091160550-2173ff9e5ee5?auto=format&fit=crop&q=80&w=800"} 
+                  alt={course.title} 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                />
+                <div className="absolute top-4 left-4 z-10">
+                  <span className="text-[10px] bg-emerald-500 text-white font-mono font-bold uppercase px-3 py-1 rounded-full border border-emerald-500/40">
+                    {course.category || "General"}
+                  </span>
+                </div>
+                <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
+                  <span className="text-[10px] font-mono font-bold tracking-wider opacity-80">{course.code}</span>
+                  <h3 className="font-display font-bold text-lg mt-1 leading-snug">{course.title}</h3>
+                </div>
+              </div>
+
+              <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">{course.description}</p>
+                
+                {(course.duration || course.level) && (
+                  <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
+                    {course.duration && (
+                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                        <Clock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                        <span>Duración: <strong className="text-slate-700">{course.duration}</strong></span>
+                      </div>
+                    )}
+                    {course.level && (
+                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                        <Award className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                        <span>Nivel: <strong className="text-slate-700">{course.level}</strong></span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs text-slate-500">
+                    <span>Progreso</span>
+                    <span className="font-bold text-slate-800">{course.progress || 0}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                    <div className="bg-emerald-500 h-full" style={{ width: `${course.progress || 0}%` }}></div>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                  <span className="text-xs text-slate-400 font-medium">Titular: Prof. {course.teacher}</span>
+                  <button className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1">
+                    <span>Acceder</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
-  const renderSyllabus = (course: Course) => (
-    <div id="syllabus-modules" className="space-y-4">
-      {course.modules.map((mod) => {
-        const isExpanded = expandedModule === mod.id;
-        return (
-          <div key={mod.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-            <button
-              onClick={() => setExpandedModule(isExpanded ? null : mod.id)}
-              className="w-full text-left p-5 flex justify-between items-center hover:bg-slate-50/50 transition-colors"
-            >
-              <div>
-                <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-400">Módulo</span>
-                <h4 className="font-bold text-slate-900 text-sm md:text-base">{mod.title}</h4>
-                <p className="text-xs text-slate-500 mt-0.5">{mod.description}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400 font-medium">{mod.lessons.length} unidades</span>
-                <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-              </div>
-            </button>
+  // ==========================================
+  // RENDER 2: DETALLE DEL CURSO (DATOS REALES)
+  // ==========================================
+  const renderCourseDetail = () => {
+    if (!selectedCourse) return null;
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+          <button
+            onClick={() => {
+              setViewMode('catalog');
+              setHomeworkGradedResult(null);
+              setHomeworkText("");
+            }}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600 font-semibold transition-colors w-fit"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver al Catálogo</span>
+          </button>
 
-            {isExpanded && (
-              <div className="border-t border-slate-100 p-4 bg-slate-50/30 space-y-2">
-                {mod.lessons.map((lesson) => {
-                  const getIcon = () => {
-                    switch (lesson.type) {
-                      case 'video': return Video;
-                      case 'pdf': return FileText;
-                      case 'quiz': return HelpCircle;
-                      default: return BookOpen;
-                    }
-                  };
-                  const Icon = getIcon();
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold border border-emerald-100">{selectedCourse.code}</span>
+            <h2 className="font-display font-bold text-slate-900 text-base md:text-lg">{selectedCourse.title}</h2>
+          </div>
+        </div>
+
+        <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-none">
+          <button onClick={() => setActiveSubTab('syllabus')} className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'syllabus' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            Syllabus del Curso
+          </button>
+          <button onClick={() => setActiveSubTab('quizzes')} className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'quizzes' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            Exámenes IA
+          </button>
+          <button onClick={() => setActiveSubTab('homework')} className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'homework' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            Buzón de Tareas
+          </button>
+          <button onClick={() => setActiveSubTab('lti')} className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'lti' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            Integración LTI
+          </button>
+        </div>
+
+        <div id="subtab-content-container">
+          
+          {/* PESTAÑA: SYLLABUS REAL */}
+          {activeSubTab === 'syllabus' && (
+            <div className="space-y-4">
+              {(!selectedCourse.modules || selectedCourse.modules.length === 0) ? (
+                <div className="p-8 text-center bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center">
+                  <BookOpen className="w-10 h-10 text-slate-300 mb-3" />
+                  <p className="text-slate-500 text-sm font-bold">Este programa está en construcción.</p>
+                  <p className="text-xs text-slate-400 mt-1">El profesor {selectedCourse.teacher} aún no ha publicado los módulos.</p>
+                </div>
+              ) : (
+                selectedCourse.modules.map((mod) => {
+                  const isExpanded = expandedModule === mod.id;
                   return (
-                    <div 
-                      key={lesson.id}
-                      className="p-3.5 bg-white rounded-xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm hover:border-emerald-500/30 transition-all group"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 bg-slate-100 rounded-lg text-slate-600 group-hover:bg-emerald-500/10 group-hover:text-emerald-600 transition-colors">
-                          <Icon className="w-4 h-4" />
-                        </div>
+                    <div key={mod.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                      <button
+                        onClick={() => setExpandedModule(isExpanded ? null : mod.id)}
+                        className="w-full text-left p-5 flex justify-between items-center hover:bg-slate-50/50 transition-colors"
+                      >
                         <div>
-                          <h5 className="font-bold text-slate-900 text-xs md:text-sm group-hover:text-emerald-600 transition-colors">{lesson.title}</h5>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{lesson.description} • Duración: {lesson.duration}</p>
+                          <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-slate-400">Módulo</span>
+                          <h4 className="font-bold text-slate-900 text-sm md:text-base">{mod.title}</h4>
+                          <p className="text-xs text-slate-500 mt-0.5">{mod.description}</p>
                         </div>
-                      </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-400 font-medium">{mod.lessons.length} elementos</span>
+                          <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </div>
+                      </button>
 
-                      <div className="flex items-center gap-2 self-end md:self-auto">
-                        {lesson.type === 'quiz' ? (
-                          <button
-                            onClick={() => startQuizFlow(lesson.title)}
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/10"
-                          >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>Dar Quiz IA</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={(e) => { e.preventDefault(); alert(`Descargando recurso de INTECA: ${lesson.title}`); }}
-                            className="text-slate-600 hover:text-emerald-600 bg-slate-100 hover:bg-slate-200 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"
-                          >
-                            <FolderDown className="w-3.5 h-3.5" />
-                            <span>Descargar</span>
-                          </button>
-                        )}
-                      </div>
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 p-4 bg-slate-50/30 space-y-2">
+                          {mod.lessons.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic text-center py-3">No hay contenido publicado en este módulo aún.</p>
+                          ) : (
+                            mod.lessons.map((lesson) => {
+                              const getIcon = () => {
+                                switch (lesson.type) {
+                                  case 'video': return Video;
+                                  case 'pdf': return FileText;
+                                  case 'quiz': return HelpCircle;
+                                  default: return BookOpen;
+                                }
+                              };
+                              const Icon = getIcon();
+                              return (
+                                <div 
+                                  key={lesson.id}
+                                  className="p-3.5 bg-white rounded-xl border border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm hover:border-emerald-500/30 transition-all group"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div className="p-2 bg-slate-100 rounded-lg text-slate-600 group-hover:bg-emerald-500/10 group-hover:text-emerald-600 transition-colors">
+                                      <Icon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h5 className="font-bold text-slate-900 text-xs md:text-sm group-hover:text-emerald-600 transition-colors">{lesson.title}</h5>
+                                      <p className="text-[11px] text-slate-500 mt-0.5">{lesson.description} • {lesson.duration}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 self-end md:self-auto">
+                                    {lesson.type === 'quiz' ? (
+                                      <button
+                                        onClick={() => startQuizFlow(lesson.title)}
+                                        className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5 shadow-sm shadow-emerald-500/10"
+                                      >
+                                        <Sparkles className="w-3.5 h-3.5" />
+                                        <span>Dar Quiz IA</span>
+                                      </button>
+                                    ) : (
+                                      <a 
+                                        href={lesson.contentUrl || "#"} 
+                                        target="_blank" 
+                                        rel="noreferrer"
+                                        className="text-slate-600 hover:text-emerald-600 bg-slate-100 hover:bg-slate-200 text-xs font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+                                      >
+                                        {lesson.type === 'video' ? <><Video className="w-3.5 h-3.5"/> Ver Clase</> : <><FolderDown className="w-3.5 h-3.5" /> Documento</>}
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
+                })
+              )}
+            </div>
+          )}
 
-  const renderQuizzes = () => (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-        <Sparkles className="w-5 h-5 text-emerald-500" />
-        <div>
-          <h3 className="font-bold text-slate-900">Exámenes Adaptativos e Inteligentes</h3>
-          <p className="text-xs text-slate-500">Genera tests interactivos en tiempo real con IA basados en tu avance en el curso actual.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono">IA ADAPTATIVA</span>
-            <h4 className="font-bold text-slate-900 text-sm mt-2">Diagnóstico de Conceptos Actuales</h4>
-            <p className="text-xs text-slate-500 mt-1">Evalúa tu retención de conocimiento sobre los módulos vistos esta semana.</p>
-          </div>
-          <button 
-            onClick={() => startQuizFlow("Resumen General del Módulo Actual")}
-            className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Generar Examen por IA</span>
-          </button>
-        </div>
-
-        <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 flex flex-col justify-between">
-          <div>
-            <span className="text-[10px] bg-sky-500/10 text-sky-600 px-2 py-0.5 rounded font-bold font-mono">SIMULADOR CLÍNICO</span>
-            <h4 className="font-bold text-slate-900 text-sm mt-2">Prueba rápida de Casos Prácticos</h4>
-            <p className="text-xs text-slate-500 mt-1">Preguntas de opción múltiple basadas en escenarios reales de salud y administración.</p>
-          </div>
-          <button 
-            onClick={() => startQuizFlow("Resolución de Casos Prácticos de Salud")}
-            className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-            <span>Generar Casos por IA</span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderHomework = (course: Course) => {
-    const defaultTask = {
-      title: 'Análisis Crítico del Módulo',
-      prompt: 'Basado en las lecciones impartidas en esta asignatura, elabore un análisis técnico de 3 párrafos explicando cómo aplicaría estos conceptos en un entorno clínico o administrativo real.'
-    };
-
-    return (
-      <div id="homework-portal" className="space-y-6">
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-          <div className="space-y-1">
-            <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">BUZÓN ACADÉMICO</span>
-            <h3 className="font-bold text-slate-950 font-display text-base mt-1">{defaultTask.title}</h3>
-            <p className="text-xs text-slate-500">Vence hoy a las 23:59 • Evaluación Asistida por INTECA Intellect 24/7</p>
-          </div>
-
-          <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl space-y-2 text-xs">
-            <p className="font-bold">Instrucciones del Profesor Titular:</p>
-            <p className="leading-relaxed">{defaultTask.prompt}</p>
-          </div>
-
-          {currentUser.role === 'student' && !homeworkGradedResult && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">Respuesta en Texto / Ensayo Académico:</label>
-                <textarea
-                  value={homeworkText}
-                  onChange={(e) => setHomeworkText(e.target.value)}
-                  placeholder="Redacta tu propuesta técnica detallada aquí para evaluación automática de IA..."
-                  rows={8}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none focus:bg-white transition-all leading-relaxed"
-                />
+          {/* PESTAÑA: QUIZZES IA (CON DATOS REALES DEL CURSO) */}
+          {activeSubTab === 'quizzes' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                <Sparkles className="w-5 h-5 text-emerald-500" />
+                <div>
+                  <h3 className="font-bold text-slate-900">Motor de Exámenes Adaptativos INTECA</h3>
+                  <p className="text-xs text-slate-500">Evaluaciones generadas dinámicamente con Inteligencia Artificial sobre los temas de <strong>{selectedCourse.title}</strong>.</p>
+                </div>
               </div>
 
-              <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                <span className="text-[10px] text-slate-400">La IA auditará el plagio y redacción académica de forma inmediata.</span>
-                <button
-                  onClick={() => submitHomework(defaultTask.title)}
-                  disabled={submittingHomework}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-5 rounded-xl transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
-                >
-                  {submittingHomework ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /><span>Evaluando con IA...</span></>
-                  ) : (
-                    <><Send className="w-3.5 h-3.5" /><span>Enviar Tarea</span></>
-                  )}
-                </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono">EVALUACIÓN TEÓRICA</span>
+                    <h4 className="font-bold text-slate-900 text-sm mt-2">Diagnóstico de Asimilación</h4>
+                    <p className="text-xs text-slate-500 mt-1">Mide tu conocimiento general sobre todos los conceptos clave impartidos en este programa.</p>
+                  </div>
+                  <button 
+                    onClick={() => startQuizFlow(`Conceptos principales y evaluación técnica de ${selectedCourse.title}`)}
+                    className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Examen: {selectedCourse.title}</span>
+                  </button>
+                </div>
+
+                <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100 space-y-3 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] bg-sky-500/10 text-sky-600 px-2 py-0.5 rounded font-bold font-mono">SIMULADOR PRÁCTICO</span>
+                    <h4 className="font-bold text-slate-900 text-sm mt-2">Prueba de Casos Aplicados</h4>
+                    <p className="text-xs text-slate-500 mt-1">Análisis de escenarios reales para profesionales en el área de {selectedCourse.category || "Salud"}.</p>
+                  </div>
+                  <button 
+                    onClick={() => startQuizFlow(`Resolución de problemas y casos prácticos en el área de ${selectedCourse.category || "la materia abordada"}`)}
+                    className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Simulador: {selectedCourse.category || "Casos"}</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {homeworkGradedResult && (
-            <div className="bg-slate-900 text-white rounded-3xl p-6 border border-emerald-500/50 space-y-6 relative overflow-hidden">
-              <div className="absolute right-0 top-0 p-6 opacity-5">
-                <Award className="w-48 h-48" />
+          {/* PESTAÑA: BUZÓN DE TAREAS (CON TÍTULOS REALES) */}
+          {activeSubTab === 'homework' && (
+             <div id="homework-portal" className="space-y-6">
+             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+               <div className="space-y-1">
+                 <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">BUZÓN ACADÉMICO</span>
+                 <h3 className="font-bold text-slate-950 font-display text-base mt-1">Proyecto Final: {selectedCourse.title}</h3>
+                 <p className="text-xs text-slate-500">Evaluación Asistida por el Titular Prof. {selectedCourse.teacher} y motor IA.</p>
+               </div>
+     
+               <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl space-y-2 text-xs">
+                 <p className="font-bold">Mandato Oficial:</p>
+                 <p className="leading-relaxed">Basado en las competencias desarrolladas durante el programa académico de <strong>{selectedCourse.title}</strong>, redacte un análisis exhaustivo explicando cómo aplicaría usted los conocimientos de nivel {selectedCourse.level} en su entorno profesional diario.</p>
+               </div>
+     
+               {currentUser.role === 'student' && !homeworkGradedResult && (
+                 <div className="space-y-4">
+                   <div>
+                     <label className="block text-xs font-bold text-slate-700 mb-2">Entregar Propuesta / Ensayo Académico:</label>
+                     <textarea
+                       value={homeworkText}
+                       onChange={(e) => setHomeworkText(e.target.value)}
+                       placeholder="Redacta o pega tu documento técnico aquí para evaluación automática..."
+                       rows={8}
+                       className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs focus:ring-1 focus:ring-emerald-500 focus:outline-none focus:bg-white transition-all leading-relaxed"
+                     />
+                   </div>
+     
+                   <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                     <span className="text-[10px] text-slate-400">INTECA Intellect auditará originalidad y coherencia técnica de inmediato.</span>
+                     <button
+                       onClick={() => submitHomework(`Proyecto de ${selectedCourse.title}`)}
+                       disabled={submittingHomework}
+                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                     >
+                       {submittingHomework ? (
+                         <><Loader2 className="w-4 h-4 animate-spin" /><span>Evaluando entrega...</span></>
+                       ) : (
+                         <><Send className="w-4 h-4" /><span>Entregar Proyecto</span></>
+                       )}
+                     </button>
+                   </div>
+                 </div>
+               )}
+     
+               {homeworkGradedResult && (
+                 <div className="bg-slate-900 text-white rounded-3xl p-6 border border-emerald-500/50 space-y-6 relative overflow-hidden">
+                   <div className="absolute right-0 top-0 p-6 opacity-5">
+                     <Award className="w-48 h-48" />
+                   </div>
+     
+                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-white/10">
+                     <div className="flex items-center gap-3">
+                       <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400">
+                         <Sparkles className="w-6 h-6" />
+                       </div>
+                       <div>
+                         <h4 className="font-display font-bold text-lg">Evaluación Oficial Académica</h4>
+                         <p className="text-xs text-slate-400">Reporte certificado de corrección IA</p>
+                       </div>
+                     </div>
+                     
+                     <div className="text-center bg-emerald-500/20 border border-emerald-500/40 px-6 py-3 rounded-2xl min-w-[120px]">
+                       <span className="text-[10px] text-slate-300 block uppercase font-bold">Calificación Final</span>
+                       <span className="text-3xl font-display font-bold text-emerald-400">{homeworkGradedResult.feedback.score} <span className="text-sm text-slate-400">/ 100</span></span>
+                     </div>
+                   </div>
+     
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+                     <div className="space-y-4">
+                       <div className="bg-white/5 p-4 rounded-xl border border-white/5 space-y-2">
+                         <div className="flex justify-between">
+                           <span className="font-bold text-emerald-400">Auditoría de Originalidad:</span>
+                           <span className="font-mono text-rose-400 font-semibold">{homeworkGradedResult.feedback.plagiarismScore}% Similitud Web</span>
+                         </div>
+                         <p className="text-slate-300 leading-relaxed">{homeworkGradedResult.feedback.plagiarismReport}</p>
+                       </div>
+     
+                       <div className="space-y-2">
+                         <span className="font-bold text-emerald-400 block">Reporte Analítico del Tutor:</span>
+                         <p className="text-slate-300 leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">{homeworkGradedResult.feedback.critique}</p>
+                       </div>
+                     </div>
+     
+                     <div className="space-y-4">
+                       <div className="space-y-2">
+                         <span className="font-bold text-emerald-400 block">✓ Fortalezas Técnicas:</span>
+                         <ul className="space-y-1.5 bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/10">
+                           {homeworkGradedResult.feedback.strengths.map((s: string, idx: number) => (
+                             <li key={idx} className="text-slate-300 flex items-start gap-2">
+                               <span className="text-emerald-400 font-bold">•</span>
+                               <span>{s}</span>
+                             </li>
+                           ))}
+                         </ul>
+                       </div>
+     
+                       <div className="space-y-2">
+                         <span className="font-bold text-amber-400 block">⚡ Factores a Mejorar:</span>
+                         <ul className="space-y-1.5 bg-amber-950/20 p-4 rounded-xl border border-amber-500/10">
+                           {homeworkGradedResult.feedback.improvements.map((i: string, idx: number) => (
+                             <li key={idx} className="text-slate-300 flex items-start gap-2">
+                               <span className="text-amber-400 font-bold">•</span>
+                               <span>{i}</span>
+                             </li>
+                           ))}
+                         </ul>
+                       </div>
+                     </div>
+                   </div>
+     
+                   <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] text-slate-400">
+                     <span>Evaluación firmada criptográficamente por motor INTECA.</span>
+                     <button
+                       onClick={() => {
+                         setHomeworkText("");
+                         setHomeworkGradedResult(null);
+                       }}
+                       className="text-emerald-400 hover:underline font-bold"
+                     >
+                       Rehacer Proyecto
+                     </button>
+                   </div>
+                 </div>
+               )}
+             </div>
+           </div>
+          )}
+
+          {/* PESTAÑA: INTEGRACIÓN LTI (CON ID REAL) */}
+          {activeSubTab === 'lti' && (
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <div className="border-b border-slate-100 pb-3">
+                <h3 className="font-bold text-slate-900">Interoperabilidad LTI (Learning Tools Interoperability)</h3>
+                <p className="text-xs text-slate-500">Este curso ({selectedCourse.title}) está listo para federarse con plataformas secundarias.</p>
               </div>
-
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-400">
-                    <Sparkles className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h4 className="font-display font-bold text-lg">Evaluación Oficial de INTECA Intellect</h4>
-                    <p className="text-xs text-slate-400">Analizador Inteligente de Criterios y Plagio</p>
-                  </div>
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-3 leading-relaxed">
+                <p>Las siguientes llaves criptográficas son únicas y exclusivas de este programa académico. Cópielas para incrustar el contenido en Moodle, Canvas o Blackboard:</p>
+                <div className="bg-slate-950 text-emerald-400 p-4 rounded-xl font-mono text-xs space-y-2 shadow-inner">
+                  <p><span className="text-slate-400">LTI_CONSUMER_KEY:</span> inteca_hub_{selectedCourse.id.substring(0,8)}</p>
+                  <p><span className="text-slate-400">LTI_SHARED_SECRET:</span> sec_{selectedCourse.id}84e</p>
+                  <p><span className="text-slate-400">LAUNCH_URL:</span> {`https://lms.inteca.edu.co/api/lti/launch/${selectedCourse.id}`}</p>
                 </div>
-                
-                <div className="text-center bg-emerald-500/20 border border-emerald-500/40 px-6 py-3 rounded-2xl min-w-[120px]">
-                  <span className="text-[10px] text-slate-300 block uppercase font-bold">Calificación</span>
-                  <span className="text-3xl font-display font-bold text-emerald-400">{homeworkGradedResult.feedback.score} <span className="text-sm text-slate-400">/ 100</span></span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-                <div className="space-y-4">
-                  <div className="bg-white/5 p-4 rounded-xl border border-white/5 space-y-2">
-                    <div className="flex justify-between">
-                      <span className="font-bold text-emerald-400">Análisis de Originalidad:</span>
-                      <span className="font-mono text-rose-400 font-semibold">{homeworkGradedResult.feedback.plagiarismScore}% Coincidencia</span>
-                    </div>
-                    <p className="text-slate-300 leading-relaxed">{homeworkGradedResult.feedback.plagiarismReport}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="font-bold text-emerald-400 block">Análisis Docente Asistido:</span>
-                    <p className="text-slate-300 leading-relaxed bg-white/5 p-4 rounded-xl border border-white/5">{homeworkGradedResult.feedback.critique}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <span className="font-bold text-emerald-400 block">✓ Fortalezas de tu Entrega:</span>
-                    <ul className="space-y-1.5 bg-emerald-950/20 p-4 rounded-xl border border-emerald-500/10">
-                      {homeworkGradedResult.feedback.strengths.map((s: string, idx: number) => (
-                        <li key={idx} className="text-slate-300 flex items-start gap-2">
-                          <span className="text-emerald-400 font-bold">•</span>
-                          <span>{s}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-
-                  <div className="space-y-2">
-                    <span className="font-bold text-amber-400 block">⚡ Oportunidades de Mejora:</span>
-                    <ul className="space-y-1.5 bg-amber-950/20 p-4 rounded-xl border border-amber-500/10">
-                      {homeworkGradedResult.feedback.improvements.map((i: string, idx: number) => (
-                        <li key={idx} className="text-slate-300 flex items-start gap-2">
-                          <span className="text-amber-400 font-bold">•</span>
-                          <span>{i}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] text-slate-400">
-                <span>Evaluador: INTECA Intellect LLM Engine • 2026</span>
-                <button
-                  onClick={() => {
-                    setHomeworkText("");
-                    setHomeworkGradedResult(null);
-                  }}
-                  className="text-emerald-400 hover:underline font-bold"
-                >
-                  Volver a entregar
-                </button>
+                <p className="text-[10px] text-slate-400 italic">El acceso mediante LTI reportará las calificaciones directamente a su plataforma original.</p>
               </div>
             </div>
+          )}
+
+        </div>
+      </div>
+    );
+  };
+
+  // ==========================================
+  // RENDER 3: STUDIO CREADOR DE CURSOS
+  // ==========================================
+  const renderStudio = () => (
+    <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-900 p-6 rounded-3xl text-white shadow-xl gap-4">
+        <div>
+          <span className="text-emerald-400 text-[10px] font-mono font-bold uppercase tracking-wider">Modo Arquitecto de Cursos</span>
+          <h2 className="text-2xl font-bold font-display mt-1">{courseForm.id ? "Editar Programa Académico" : "Construir Nuevo Programa"}</h2>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => setViewMode('catalog')} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-700">
+            Cancelar
+          </button>
+          <button 
+            onClick={saveCourseToFirebase} 
+            disabled={isSaving} 
+            className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+          >
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Publicar Curso
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* COLUMNA IZQUIERDA: Info General */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">Información Principal</h3>
+            
+            <div className="space-y-4 text-sm">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Título del Curso</label>
+                <input type="text" value={courseForm.title} onChange={e => setCourseForm({...courseForm, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="Ej. Atención al Usuario" />
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Código</label>
+                  <input type="text" value={courseForm.code} onChange={e => setCourseForm({...courseForm, code: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="ATE-104" />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Categoría</label>
+                  <input type="text" value={courseForm.category} onChange={e => setCourseForm({...courseForm, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="Servicio al Cliente" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Profesor Asignado</label>
+                <input type="text" value={courseForm.teacher} onChange={e => setCourseForm({...courseForm, teacher: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Descripción Detallada</label>
+                <textarea rows={4} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors leading-relaxed" placeholder="¿Qué aprenderá el estudiante en este curso?" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1.5"><Image className="w-3.5 h-3.5"/> URL de Portada (Imagen)</label>
+                <input type="text" value={courseForm.image} onChange={e => setCourseForm({...courseForm, image: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="Pega el enlace web de la foto..." />
+                {courseForm.image && (
+                  <div className="mt-3 relative rounded-xl overflow-hidden border border-slate-200 h-32">
+                    <img src={courseForm.image} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {courseForm.id && currentUser.role === 'admin' && (
+               <button onClick={() => deleteCourse(courseForm.id as string)} className="w-full mt-6 flex items-center justify-center gap-2 py-3 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-all">
+                 <Trash2 className="w-4 h-4"/> Eliminar Curso Definitivamente
+               </button>
+            )}
+          </div>
+        </div>
+
+        {/* COLUMNA DERECHA: Módulos y Lecciones */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+            <div>
+              <h3 className="font-bold text-slate-800">Estructura Académica (Módulos)</h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Añade los temas y sube tus enlaces de video, PDF o exámenes.</p>
+            </div>
+            <button onClick={handleAddModule} className="bg-sky-50 text-sky-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-sky-100 transition-colors border border-sky-100">
+              <Plus className="w-4 h-4" /> Agregar Módulo
+            </button>
+          </div>
+
+          {(courseForm.modules || []).map((mod, mIndex) => (
+            <div key={mod.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col md:flex-row gap-4 items-center">
+                <div className="flex-1 w-full">
+                  <input 
+                    type="text" 
+                    value={mod.title} 
+                    onChange={(e) => {
+                      const newMods = [...(courseForm.modules || [])];
+                      newMods[mIndex].title = e.target.value;
+                      setCourseForm({...courseForm, modules: newMods});
+                    }} 
+                    className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-full pb-1.5 transition-colors" 
+                    placeholder="Escribe el Título del Módulo aquí..." 
+                  />
+                </div>
+                <button onClick={() => handleAddLesson(mod.id)} className="text-xs bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2 rounded-xl font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1.5 w-full md:w-auto justify-center">
+                  <Plus className="w-4 h-4"/> Añadir Recurso
+                </button>
+              </div>
+
+              <div className="p-5 space-y-3">
+                {mod.lessons.length === 0 ? (
+                  <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-2xl">
+                    <BookOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs text-slate-400 font-medium">Este módulo está vacío. Añade una lección para comenzar.</p>
+                  </div>
+                ) : (
+                  mod.lessons.map((lesson, lIndex) => (
+                    <div key={lesson.id} className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl relative group">
+                      
+                      <button 
+                        onClick={() => {
+                          const newMods = [...(courseForm.modules || [])];
+                          newMods[mIndex].lessons.splice(lIndex, 1);
+                          setCourseForm({...courseForm, modules: newMods});
+                        }}
+                        className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors"
+                        title="Eliminar Lección"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      <div className="flex flex-col md:flex-row items-start md:items-center gap-4 pr-6">
+                        <select 
+                          value={lesson.type} 
+                          onChange={(e) => {
+                            const newMods = [...(courseForm.modules || [])];
+                            newMods[mIndex].lessons[lIndex].type = e.target.value as any;
+                            setCourseForm({...courseForm, modules: newMods});
+                          }} 
+                          className="bg-white border border-slate-300 text-xs rounded-xl p-2 outline-none font-bold text-slate-700 shadow-sm"
+                        >
+                          <option value="video">🎥 Video (URL)</option>
+                          <option value="pdf">📄 Archivo (PDF/Doc)</option>
+                          <option value="quiz">🧠 Examen de Inteligencia Artificial</option>
+                        </select>
+                        
+                        <input 
+                          type="text" 
+                          value={lesson.title} 
+                          onChange={(e) => {
+                            const newMods = [...(courseForm.modules || [])];
+                            newMods[mIndex].lessons[lIndex].title = e.target.value;
+                            setCourseForm({...courseForm, modules: newMods});
+                          }} 
+                          className="flex-1 w-full bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-sm font-semibold pb-1.5 transition-colors" 
+                          placeholder="Nombre del contenido (Ej. Introducción a la Anatomía)" 
+                        />
+                        
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-slate-400" />
+                          <input 
+                            type="text" 
+                            value={lesson.duration} 
+                            onChange={(e) => {
+                              const newMods = [...(courseForm.modules || [])];
+                              newMods[mIndex].lessons[lIndex].duration = e.target.value;
+                              setCourseForm({...courseForm, modules: newMods});
+                            }} 
+                            className="w-20 bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs pb-1.5 text-center font-medium transition-colors" 
+                            placeholder="Ej. 15 min" 
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 mt-1 bg-white p-2 rounded-xl border border-slate-100">
+                        <div className="p-1.5 bg-slate-100 rounded-lg"><LinkIcon className="w-3.5 h-3.5 text-slate-500" /></div>
+                        <input 
+                          type="text" 
+                          value={lesson.contentUrl || ""} 
+                          onChange={(e) => {
+                            const newMods = [...(courseForm.modules || [])];
+                            newMods[mIndex].lessons[lIndex].contentUrl = e.target.value;
+                            setCourseForm({...courseForm, modules: newMods});
+                          }} 
+                          className="flex-1 bg-transparent border-none outline-none text-xs text-slate-600" 
+                          placeholder="Pega aquí el enlace de YouTube, Vimeo o Google Drive para este contenido..." 
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // ==========================================
+  // RENDER: FLUJO DE QUIZ IA (MODAL EMERGENTE)
+  // ==========================================
+  const renderActiveQuizFlow = () => {
+    if (!activeQuizTopic) return null;
+    return (
+      <div className="bg-slate-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 space-y-6 shadow-xl relative min-h-[500px] flex flex-col justify-between mb-6 animate-in zoom-in-95 duration-300">
+        <div className="absolute right-6 top-6 flex items-center gap-4 bg-slate-900 px-4 py-2 rounded-xl border border-white/5">
+          <Clock className="w-4 h-4 text-emerald-500 animate-pulse" />
+          <span className="text-xs font-mono font-bold">Tiempo restante: {timerCount}s</span>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2 mb-6">
+            <span className="text-xs text-emerald-500 font-bold uppercase tracking-widest">Evaluación Dinámica por IA</span>
+            <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-slate-300">Tema: {activeQuizTopic}</span>
+          </div>
+          
+          {loadingQuiz && (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <Loader2 className="w-10 h-10 animate-spin text-emerald-500" />
+              <p className="text-sm text-slate-400">Generando cuestionario personalizado con Inteligencia Artificial...</p>
+            </div>
+          )}
+
+          {quizError && (
+            <div className="py-12 text-center space-y-4">
+              <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
+              <p className="text-sm text-slate-300">{quizError}</p>
+              <button onClick={closeQuiz} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all">Volver</button>
+            </div>
+          )}
+
+          {!loadingQuiz && quizQuestions.length > 0 && !quizFinished && (
+            <div className="space-y-8 mt-4">
+              <div>
+                <span className="text-xs text-slate-400 font-mono">Pregunta {currentQuizIndex + 1} de {quizQuestions.length}</span>
+                <h3 className="font-display font-bold text-lg md:text-xl text-white mt-2 leading-relaxed">
+                  {quizQuestions[currentQuizIndex].question}
+                </h3>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {quizQuestions[currentQuizIndex].options.map((opt, oIdx) => {
+                  const isSelected = selectedAnswer === oIdx;
+                  const isCorrectOption = oIdx === quizQuestions[currentQuizIndex].correctAnswer;
+                  
+                  let bgStyle = "bg-white/5 border-white/10 hover:bg-white/10";
+                  if (selectedAnswer !== null) {
+                    if (isCorrectOption) bgStyle = "bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]";
+                    else if (isSelected) bgStyle = "bg-rose-500/20 border-rose-500 text-rose-400";
+                    else bgStyle = "bg-white/5 border-white/5 opacity-50";
+                  }
+
+                  return (
+                    <button
+                      key={oIdx}
+                      disabled={selectedAnswer !== null}
+                      onClick={() => handleSelectAnswer(oIdx)}
+                      className={`w-full text-left p-5 rounded-2xl border text-sm font-medium transition-all duration-300 ${bgStyle}`}
+                    >
+                      {opt}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedAnswer !== null && (
+                <div className="p-5 bg-sky-900/30 border border-sky-800 rounded-2xl text-xs space-y-2 leading-relaxed animate-in slide-in-from-bottom-2">
+                  <span className="font-bold text-emerald-400 block flex items-center gap-1.5"><Sparkles className="w-4 h-4"/> Explicación del Tutor IA:</span>
+                  <p className="text-slate-300">{quizQuestions[currentQuizIndex].explanation}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!loadingQuiz && quizFinished && (
+            <div className="py-12 text-center space-y-6">
+              <div className="w-20 h-20 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto">
+                <Award className="w-10 h-10 text-emerald-500" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-3xl font-bold font-display text-white">¡Evaluación Finalizada!</h3>
+                <p className="text-xs text-slate-400">Tu desempeño ha sido enviado a la libreta académica del curso de INTECA.</p>
+              </div>
+              
+              <div className="bg-white/5 border border-white/5 rounded-3xl max-w-sm mx-auto p-6">
+                <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Aciertos Registrados</p>
+                <p className="text-5xl font-display font-bold text-emerald-500 mt-2">
+                  {quizScore} <span className="text-xl text-slate-400">/ {quizQuestions.length}</span>
+                </p>
+                <p className="text-[11px] text-slate-500 mt-3 bg-slate-900 py-1.5 rounded-lg border border-white/5">
+                  Nivel estimado: {quizScore === quizQuestions.length ? "Excelente - 100%" : quizScore >= 2 ? "Aprobado - 67%" : "Necesita refuerzo - 33%"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-between items-center pt-6 border-t border-white/10">
+          <button onClick={closeQuiz} className="text-xs text-slate-400 hover:text-white font-medium transition-colors">
+            Cerrar examen
+          </button>
+
+          {selectedAnswer !== null && !quizFinished && (
+            <button
+              onClick={handleNextQuestion}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-600/20"
+            >
+              Siguiente Pregunta
+            </button>
+          )}
+
+          {quizFinished && (
+            <button
+              onClick={closeQuiz}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-600/20"
+            >
+              Volver al Curso
+            </button>
           )}
         </div>
       </div>
     );
   };
 
-  const renderLTI = (course: Course) => (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-      <div className="border-b border-slate-100 pb-3">
-        <h3 className="font-bold text-slate-900">Interoperabilidad LTI y SCORM 1.2 / 2004</h3>
-        <p className="text-xs text-slate-500">INTECA soporta federación de cursos con plataformas secundarias de forma automatizada.</p>
-      </div>
-      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-3 leading-relaxed">
-        <p>Este curso dispone de claves de interoperabilidad LTI activas para incrustar lecciones en Canvas, Blackboard o Moodle Externo:</p>
-        <div className="bg-slate-950 text-slate-400 p-3 rounded-lg font-mono text-[10px] space-y-1">
-          <p><span className="text-emerald-500">LTI_CONSUMER_KEY:</span> inteca_caribe_2026_prod_v3</p>
-          <p><span className="text-emerald-500">LTI_SHARED_SECRET:</span> sec_48f9382bd8e9381a17f6300a84e</p>
-          <p><span className="text-emerald-500">LAUNCH_URL:</span> {`https://ais-dev-inteca.run.app/api/lti/launch/${course.id}`}</p>
-        </div>
-        <p className="text-[10px] text-slate-400">Cumple con la norma IMS Global Learning Consortium. Para soporte SCORM, contacte a Soporte Técnico.</p>
-      </div>
-    </div>
-  );
-
   return (
-    <div id="courses-view-root" className="space-y-6">
-      {activeQuizTopic && (
-        <div id="active-quiz-flow" className="bg-slate-950 text-white p-6 md:p-8 rounded-3xl border border-slate-800 space-y-6 shadow-xl relative min-h-[500px] flex flex-col justify-between">
-          <div className="absolute right-6 top-6 flex items-center gap-4 bg-slate-900 px-4 py-2 rounded-xl border border-white/5">
-            <Clock className="w-4 h-4 text-emerald-500 animate-pulse" />
-            <span className="text-xs font-mono font-bold">Tiempo restante: {timerCount}s</span>
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-emerald-500 font-bold uppercase tracking-widest">Evaluación Dinámica por IA</span>
-              <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded font-mono text-slate-300">Tema: {activeQuizTopic}</span>
-            </div>
-            
-            {loadingQuiz && (
-              <div className="flex flex-col items-center justify-center py-20 gap-4">
-                <Loader2 className="w-10 h-10 animate-spin text-emerald-500" />
-                <p className="text-sm text-slate-400">Generando cuestionario personalizado con Inteligencia Artificial...</p>
-              </div>
-            )}
-
-            {quizError && (
-              <div className="py-12 text-center space-y-4">
-                <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
-                <p className="text-sm text-slate-300">{quizError}</p>
-                <button onClick={closeQuiz} className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all">Volver</button>
-              </div>
-            )}
-
-            {!loadingQuiz && quizQuestions.length > 0 && !quizFinished && (
-              <div className="space-y-6 mt-6">
-                <div>
-                  <span className="text-xs text-slate-400 font-mono">Pregunta {currentQuizIndex + 1} de {quizQuestions.length}</span>
-                  <h3 className="font-display font-bold text-lg md:text-xl text-white mt-1 leading-relaxed">
-                    {quizQuestions[currentQuizIndex].question}
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {quizQuestions[currentQuizIndex].options.map((opt, oIdx) => {
-                    const isSelected = selectedAnswer === oIdx;
-                    const isCorrectOption = oIdx === quizQuestions[currentQuizIndex].correctAnswer;
-                    
-                    let bgStyle = "bg-white/5 border-white/10 hover:bg-white/10";
-                    if (selectedAnswer !== null) {
-                      if (isCorrectOption) {
-                        bgStyle = "bg-emerald-500/20 border-emerald-500 text-emerald-400";
-                      } else if (isSelected) {
-                        bgStyle = "bg-rose-500/20 border-rose-500 text-rose-400";
-                      } else {
-                        bgStyle = "bg-white/5 border-white/5 opacity-50";
-                      }
-                    }
-
-                    return (
-                      <button
-                        key={oIdx}
-                        disabled={selectedAnswer !== null}
-                        onClick={() => handleSelectAnswer(oIdx)}
-                        className={`w-full text-left p-4 rounded-xl border text-xs md:text-sm font-medium transition-all ${bgStyle}`}
-                      >
-                        {opt}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {selectedAnswer !== null && (
-                  <div className="p-4 bg-sky-900/30 border border-sky-800 rounded-2xl text-xs space-y-1.5 leading-relaxed">
-                    <span className="font-bold text-emerald-400 block">✓ Explicación del Tutor:</span>
-                    <p className="text-slate-300">{quizQuestions[currentQuizIndex].explanation}</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!loadingQuiz && quizFinished && (
-              <div className="py-12 text-center space-y-6">
-                <div className="w-16 h-16 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto">
-                  <Award className="w-8 h-8 text-emerald-500" />
-                </div>
-                <div className="space-y-2">
-                  <h3 className="text-2xl font-bold font-display text-white">¡Evaluación Finalizada!</h3>
-                  <p className="text-xs text-slate-400">Tu desempeño ha sido enviado a la libreta académica del curso de INTECA.</p>
-                </div>
-                
-                <div className="bg-white/5 border border-white/5 rounded-2xl max-w-sm mx-auto p-5">
-                  <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Aciertos Registrados</p>
-                  <p className="text-4xl font-display font-bold text-emerald-500 mt-1">
-                    {quizScore} <span className="text-lg text-slate-400">/ {quizQuestions.length}</span>
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-2">Nivel estimado: {quizScore === quizQuestions.length ? "Excelente - 100%" : quizScore >= 2 ? "Aprobado - 67%" : "Necesita refuerzo - 33%"}</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between items-center pt-4 border-t border-white/10">
-            <button 
-              onClick={closeQuiz} 
-              className="text-xs text-slate-400 hover:text-white font-medium"
-            >
-              Cerrar examen
-            </button>
-
-            {selectedAnswer !== null && !quizFinished && (
-              <button
-                onClick={handleNextQuestion}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-5 rounded-xl transition-all"
-              >
-                Siguiente Pregunta
-              </button>
-            )}
-
-            {quizFinished && (
-              <button
-                onClick={closeQuiz}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-5 rounded-xl transition-all"
-              >
-                Volver al Curso
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
+    <div id="courses-view-root">
+      {activeQuizTopic && renderActiveQuizFlow()}
       {!activeQuizTopic && (
         <>
-          {selectedCourse === null ? (
-            <div className="space-y-6">
-              <div>
-                <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Instituto Técnico del Caribe</span>
-                <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Cursos (LMS)</h1>
-              </div>
-              {renderCourseList()}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-                <button
-                  onClick={() => {
-                    setSelectedCourse(null);
-                    setHomeworkGradedResult(null);
-                    setHomeworkText("");
-                  }}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600 font-semibold transition-colors w-fit"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Volver a mis materias</span>
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold border border-emerald-100">{selectedCourse.code}</span>
-                  <h2 className="font-display font-bold text-slate-900 text-base md:text-lg">{selectedCourse.title}</h2>
-                </div>
-              </div>
-
-              <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-none">
-                <button
-                  onClick={() => setActiveSubTab('syllabus')}
-                  className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'syllabus' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-                >
-                  Syllabus del Curso
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('quizzes')}
-                  className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'quizzes' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-                >
-                  Exámenes IA
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('homework')}
-                  className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'homework' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-                >
-                  Entregas de Tarea
-                </button>
-                <button
-                  onClick={() => setActiveSubTab('lti')}
-                  className={`px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-[2px] ${activeSubTab === 'lti' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}
-                >
-                  Integración LTI
-                </button>
-              </div>
-
-              <div id="subtab-content-container">
-                {activeSubTab === 'syllabus' && renderSyllabus(selectedCourse)}
-                {activeSubTab === 'quizzes' && renderQuizzes()}
-                {activeSubTab === 'homework' && renderHomework(selectedCourse)}
-                {activeSubTab === 'lti' && renderLTI(selectedCourse)}
-              </div>
-            </div>
-          )}
+          {viewMode === 'catalog' && renderCatalog()}
+          {viewMode === 'studio' && renderStudio()}
+          {viewMode === 'detail' && renderCourseDetail()}
         </>
       )}
     </div>

@@ -27,7 +27,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [role, setRole] = useState<UserRole>("student");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,7 +38,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const generateSafeProfile = (uid: string, name: string, email: string, role: UserRole): UserProfile => {
     return {
       id: uid,
-      name: name || "Usuario Demo",
+      name: name || "Usuario Nuevo",
       email: email || "",
       role: role,
       avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${name.replace(/ /g, '')}`,
@@ -97,11 +96,17 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         if (!firstName || !lastName) throw new Error("Por favor ingresa tu nombre y apellido.");
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        // REGLA DE SEGURIDAD ABSOLUTA: 
+        // Todos nacen como 'student', excepto el master admin (Luis).
+        const isMasterAdmin = email.toLowerCase() === "luisramirezescalante1985@gmail.com";
+        const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
+
         const newUser = generateSafeProfile(
           userCredential.user.uid, 
           `${firstName} ${lastName}`.trim(), 
           email, 
-          role
+          assignedRole
         );
 
         await setDoc(doc(db, "users", userCredential.user.uid), newUser);
@@ -113,7 +118,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         handleMfaRequired(err);
       } else if (err.code === 'auth/email-already-in-use') {
         setError("Este correo ya está registrado. Haz clic en 'Inicia sesión'.");
-      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
+      } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
         setError("Correo o contraseña incorrectos.");
       } else if (err.code === 'auth/weak-password') {
         setError("La contraseña debe tener al menos 6 caracteres.");
@@ -149,9 +154,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE BLINDADO CONTRA RECARGAS DE PÁGINA
+  // INTERCEPTOR DE GOOGLE BLINDADO CONTRA RECARGAS DE PÁGINA Y CON ASIGNACIÓN DE ROL SEGURA
   const handleGoogleSignIn = async (e?: React.MouseEvent) => {
-    if (e) e.preventDefault(); // Escudo anti-recarga
+    if (e) e.preventDefault();
     setLoading(true);
     setError("");
 
@@ -182,11 +187,16 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         if (userDoc.exists()) {
           onAuthSuccess(userDoc.data() as UserProfile);
         } else {
+          // REGLA DE SEGURIDAD ABSOLUTA EN GOOGLE: 
+          // Validar si es el master admin en el primer login de Google
+          const isMasterAdmin = result.user.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+          const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
+
           const newUser = generateSafeProfile(
             result.user.uid,
             result.user.displayName || "Usuario de Google",
             result.user.email || "",
-            "student"
+            assignedRole
           );
           if (result.user.photoURL) newUser.avatar = result.user.photoURL;
           await setDoc(doc(db, "users", result.user.uid), newUser);
@@ -203,27 +213,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         setError(`Error Google: ${err.message || "Fallo en la autenticación"}`);
         setLoading(false);
       }
-    }
-  };
-
-  const handleDemoLogin = async (demoRole: UserRole, e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    setLoading(true);
-    setError("");
-    try {
-      const demoId = `demo_${demoRole}_${Date.now()}`;
-      const demoName = demoRole === 'admin' ? 'Administrador Demo' : 'Auditor Demo';
-      const demoEmail = `${demoId}@inteca.edu.do`;
-      
-      const newUser = generateSafeProfile(demoId, demoName, demoEmail, demoRole);
-
-      await setDoc(doc(db, "users", demoId), newUser);
-      onAuthSuccess(newUser);
-    } catch (err: any) {
-      console.error(err);
-      setError(`Error al iniciar sesión demo: ${err.message}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -308,15 +297,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
               <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#0d2136] border border-[#163554] rounded-xl px-4 py-3.5 focus:outline-none focus:border-emerald-500 transition-colors" required />
 
-              {!isLogin && (
-                <select value={role} onChange={(e) => setRole(e.target.value as UserRole)} className="w-full bg-[#0d2136] border border-[#163554] rounded-xl px-4 py-3.5 focus:outline-none focus:border-emerald-500 transition-colors text-white">
-                  <option value="student">Estudiante</option>
-                  <option value="teacher">Profesor</option>
-                  <option value="observer">Auditor / SISALRIL</option>
-                  <option value="admin">Administrador TI</option>
-                </select>
-              )}
-
               <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#0d2136] border border-[#163554] rounded-xl px-4 py-3.5 focus:outline-none focus:border-emerald-500 transition-colors" required minLength={6} />
 
               {!isLogin && (
@@ -327,12 +307,11 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               )}
 
               <button type="submit" disabled={loading} className="w-full bg-emerald-500 hover:bg-emerald-600 text-[#07131f] font-bold text-base py-3.5 rounded-xl transition-all flex justify-center items-center gap-2">
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? "Entrar" : "Registrar")}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? "Entrar" : "Crear Cuenta de Estudiante")}
               </button>
             </form>
 
             <div className="space-y-4 pt-4 border-t border-[#163554]">
-              {/* AQUÍ SE AÑADIÓ TYPE="BUTTON" PARA BLOQUEAR LA RECARGA */}
               <button type="button" onClick={handleGoogleSignIn} disabled={loading} className="w-full bg-[#0d2136] border border-[#163554] text-white font-bold py-3.5 rounded-xl flex items-center justify-center gap-3 hover:bg-[#163554] transition-all">
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                   <>
@@ -348,24 +327,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               </button>
 
               <p className="text-center text-slate-400 text-sm">
-                {isLogin ? "¿Nuevo? " : "¿Ya tienes cuenta? "}
+                {isLogin ? "¿Nuevo en INTECA? " : "¿Ya tienes cuenta? "}
                 <button type="button" onClick={() => { setIsLogin(!isLogin); setError(""); }} className="text-emerald-500 font-bold hover:underline">
-                  {isLogin ? "Regístrate" : "Inicia sesión"}
+                  {isLogin ? "Inscríbete aquí" : "Inicia sesión"}
                 </button>
               </p>
-
-              <div className="grid grid-cols-2 gap-4 pt-4">
-                <button type="button" onClick={(e) => handleDemoLogin('admin', e)} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
-                  Admin
-                </button>
-                <button type="button" onClick={(e) => handleDemoLogin('observer', e)} disabled={loading} className="w-full bg-[#0d2136] text-slate-400 text-sm py-3 rounded-xl hover:bg-[#163554] transition-all">
-                  Auditor
-                </button>
-              </div>
             </div>
           </>
         )}
-
       </div>
     </div>
   );

@@ -47,16 +47,32 @@ export default function DashboardView({
 
   const activeClass = liveClasses.find((c: LiveClass) => c.isLive);
   
-  // Cálculo seguro del progreso
-  const studentCourses = courses.filter((c: Course) => c.progress !== undefined);
+  // ==========================================
+  // CÁLCULOS DINÁMICOS REALES (Empiezan en 0)
+  // ==========================================
+
+  // 1. Datos del Estudiante
+  const studentCourses = courses; // Aquí mapearemos los cursos en los que el estudiante esté matriculado
   const overallProgress = studentCourses.length > 0 
     ? Math.round(studentCourses.reduce((acc: number, c: Course) => acc + (c.progress || 0), 0) / studentCourses.length) 
     : 0;
+  
+  // Variables que luego vendrán de Firebase para el estudiante
+  const studentAttendance = 0; 
+  const studentCredits = 0;
+  const studentAiEvals = 0;
+  const pendingTasks: any[] = []; // Array vacío hasta que programemos las tareas reales
 
-  const teacherCourses = courses.filter((c: Course) => c.teacher === currentUser.name || currentUser.name.includes(c.teacher || ""));
+  // 2. Datos del Profesor
+  // Filtramos los cursos donde el profesor asignado sea exactamente el usuario actual
+  const teacherCourses = courses.filter((c: Course) => c.teacher === currentUser.name);
   const totalStudentsInCharge = teacherCourses.reduce((acc: number, c: Course) => acc + (c.studentsCount || 0), 0);
+  const teacherAverageAttendance = 0; // Empezamos en 0% hasta conectar el módulo de asistencia en vivo
 
-  // 1. STUDENT DASHBOARD
+
+  // ==========================================
+  // 1. PANEL DE ESTUDIANTE
+  // ==========================================
   const renderStudentDashboard = () => (
     <div id="student-dashboard-layout" className="space-y-6 animate-in fade-in duration-500">
       
@@ -96,22 +112,22 @@ export default function DashboardView({
             <span className="text-2xl font-bold text-slate-900 font-mono">{overallProgress}%</span>
           </div>
           <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-            <div className="bg-emerald-500 h-full" style={{ width: `${overallProgress}%` }}></div>
+            <div className="bg-emerald-500 h-full transition-all duration-1000" style={{ width: `${overallProgress}%` }}></div>
           </div>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between h-28">
           <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Asistencia Verificada</span>
-          <span className="text-2xl font-bold text-slate-900 font-mono">98.4%</span>
+          <span className="text-2xl font-bold text-slate-900 font-mono">{studentAttendance}%</span>
           <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1">✔ Conforme a HIPAA</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between h-28">
           <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Créditos Acumulados</span>
-          <span className="text-2xl font-bold text-sky-600 font-mono">14 / 16</span>
+          <span className="text-2xl font-bold text-sky-600 font-mono">{studentCredits} / 0</span>
           <span className="text-[10px] text-slate-400">Ciclo Técnico Avanzado</span>
         </div>
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between h-28">
           <span className="text-[10px] font-bold text-slate-400 uppercase font-mono">Evaluaciones IA</span>
-          <span className="text-2xl font-bold text-slate-900 font-mono">24</span>
+          <span className="text-2xl font-bold text-slate-900 font-mono">{studentAiEvals}</span>
           <span className="text-[10px] text-sky-500 font-semibold">Buzón Automatizado Activo</span>
         </div>
       </div>
@@ -129,31 +145,37 @@ export default function DashboardView({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {studentCourses.map((course: Course) => (
-              <div 
-                key={course.id} 
-                onClick={() => setActiveTab('courses')}
-                className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-500/30 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group"
-              >
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
-                    <span className="text-[10px] text-slate-400 font-medium">Prof. {course.teacher}</span>
+            {studentCourses.length > 0 ? (
+              studentCourses.map((course: Course) => (
+                <div 
+                  key={course.id} 
+                  onClick={() => setActiveTab('courses')}
+                  className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-500/30 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group"
+                >
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">Prof. {course.teacher}</span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 group-hover:text-sky-600 transition-colors leading-snug">{course.title}</h3>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{course.description}</p>
                   </div>
-                  <h3 className="font-bold text-slate-900 group-hover:text-sky-600 transition-colors leading-snug">{course.title}</h3>
-                  <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{course.description}</p>
+                  <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-600">
+                      <span className="font-medium">Progreso de Objetivos</span>
+                      <span className="font-bold font-mono text-slate-900">{course.progress || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${course.progress || 0}%` }} />
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5">
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span className="font-medium">Progreso de Objetivos</span>
-                    <span className="font-bold font-mono text-slate-900">{course.progress}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${course.progress}%` }} />
-                  </div>
-                </div>
+              ))
+            ) : (
+              <div className="col-span-2 p-8 text-center bg-white rounded-2xl border border-slate-100 text-slate-400 text-xs font-medium">
+                Aún no tienes asignaturas matriculadas.
               </div>
-            ))}
+            )}
           </div>
 
           {currentUser.aiProfile && (
@@ -227,14 +249,22 @@ export default function DashboardView({
               <FileText className="w-4 h-4 text-emerald-500" />
               <span>Buzón de Entregas Pendientes</span>
             </h3>
+            
             <div className="space-y-2.5">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center gap-2">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 truncate max-w-[150px]">Taller de Dosificación y Vademécum</h4>
-                  <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">Límite: Próximas 24 horas</p>
+              {pendingTasks.length > 0 ? (
+                pendingTasks.map((task, idx) => (
+                  <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center gap-2">
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900 truncate max-w-[150px]">{task.title}</h4>
+                      <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">Límite: {task.dueDate}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4 text-slate-400 text-xs font-medium">
+                  Estás al día. No hay tareas pendientes.
                 </div>
-                <span className="text-[9px] bg-rose-50 text-rose-600 border border-rose-100 px-2 py-0.5 rounded-md font-bold uppercase tracking-wider">Crítico</span>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -242,7 +272,9 @@ export default function DashboardView({
     </div>
   );
 
-  // 2. TEACHER DASHBOARD
+  // ==========================================
+  // 2. PANEL DE PROFESOR
+  // ==========================================
   const renderTeacherDashboard = () => (
     <div id="teacher-dashboard-layout" className="space-y-6 animate-in fade-in duration-500">
       <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-sky-950 rounded-3xl p-8 text-white relative overflow-hidden shadow-xl border border-slate-700">
@@ -287,7 +319,7 @@ export default function DashboardView({
                     <span className="text-[9px] bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-bold font-mono uppercase">{course.code}</span>
                     <h3 className="font-bold text-slate-900 leading-snug">{course.title}</h3>
                   </div>
-                  <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-xl font-bold font-mono whitespace-nowrap">{course.studentsCount} Matrículas</span>
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-xl font-bold font-mono whitespace-nowrap">{course.studentsCount || 0} Matrículas</span>
                 </div>
               </div>
             )) : (
@@ -308,10 +340,10 @@ export default function DashboardView({
               <div>
                 <div className="flex justify-between text-xs mb-1 font-medium text-slate-600">
                   <span>Asistencia Promedio a Clases en Vivo</span>
-                  <span className="font-bold text-slate-900 font-mono">92.4%</span>
+                  <span className="font-bold text-slate-900 font-mono">{teacherAverageAttendance}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-sky-600 h-full" style={{ width: '92.4%' }}></div>
+                  <div className="bg-sky-600 h-full transition-all duration-1000" style={{ width: `${teacherAverageAttendance}%` }}></div>
                 </div>
               </div>
               <button 
@@ -327,7 +359,9 @@ export default function DashboardView({
     </div>
   );
 
-  // 3. OBSERVER DASHBOARD (Reemplazo del antiguo "Parent")
+  // ==========================================
+  // 3. PANEL DE AUDITOR / OBSERVADOR
+  // ==========================================
   const renderObserverDashboard = () => (
     <div id="observer-dashboard-layout" className="space-y-6 animate-in fade-in duration-500">
       <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 md:p-8 relative overflow-hidden border border-slate-800 shadow-xl">
@@ -367,24 +401,32 @@ export default function DashboardView({
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {courses.map((course: Course) => (
-              <div key={course.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
-                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">Aprobado</span>
+            {courses.length > 0 ? (
+              courses.map((course: Course) => (
+                <div key={course.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
+                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">Aprobado</span>
+                    </div>
+                    <h3 className="font-bold text-slate-900 leading-snug">{course.title}</h3>
                   </div>
-                  <h3 className="font-bold text-slate-900 leading-snug">{course.title}</h3>
                 </div>
+              ))
+            ) : (
+              <div className="col-span-2 p-8 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-100 font-medium">
+                No hay programas técnicos registrados en la base de datos central actualmente.
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 
-  // 4. ADMIN DASHBOARD
+  // ==========================================
+  // 4. PANEL DE ADMINISTRADOR
+  // ==========================================
   const renderAdminDashboard = () => (
     <div id="admin-dashboard-preview" className="text-center p-8 md:p-12 bg-white rounded-3xl border border-slate-100 shadow-sm space-y-6 max-w-2xl mx-auto animate-in fade-in duration-500">
       <div className="w-16 h-16 bg-sky-50 border border-sky-100 rounded-2xl flex items-center justify-center mx-auto shadow-sm text-sky-600">
@@ -400,7 +442,7 @@ export default function DashboardView({
         onClick={() => setActiveTab('admin')}
         className="bg-slate-900 hover:bg-black text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-md font-mono"
       >
-        Abrir Consola de Auditoría
+        Abrir Consola de Gestión de Roles
       </button>
     </div>
   );

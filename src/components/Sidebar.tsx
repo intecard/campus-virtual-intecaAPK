@@ -1,3 +1,4 @@
+import React from "react";
 import { 
   BookOpen, 
   LayoutDashboard, 
@@ -6,8 +7,7 @@ import {
   TrendingUp, 
   FolderClosed, 
   Settings, 
-  LogOut, 
-  ShieldAlert
+  LogOut
 } from "lucide-react";
 import { UserRole, UserProfile } from "../types";
 
@@ -15,20 +15,18 @@ interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   currentUser: UserProfile;
-  onChangeRole: (role: UserRole) => void;
   onLogout: () => void;
   onClose?: () => void;
-  isOpen?: boolean; // <-- NUEVO: Propiedad para controlar si está abierto o cerrado
+  isOpen?: boolean;
 }
 
 export default function Sidebar({ 
   activeTab, 
   setActiveTab, 
   currentUser, 
-  onChangeRole,
   onLogout,
   onClose,
-  isOpen = false // <-- Por defecto cerrado en móviles
+  isOpen = false 
 }: SidebarProps) {
   
   const menuItems = [
@@ -38,9 +36,11 @@ export default function Sidebar({
     { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'observer'] },
     { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin', 'observer'] },
     { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin'] },
+    { id: 'admin', label: 'Auditoría y Roles', icon: Settings, roles: ['admin'] }, // <-- Acceso exclusivo a la Consola
     { id: 'settings', label: 'Perfil y Config.', icon: Settings, roles: ['student', 'teacher', 'admin', 'observer'] },
   ];
 
+  // Filtramos el menú para que cada quien vea solo lo que le corresponde
   const filteredMenu = menuItems.filter(item => item.roles.includes(currentUser.role));
 
   const roleLabels: Record<UserRole, string> = {
@@ -55,15 +55,6 @@ export default function Sidebar({
     if (onClose) {
       setTimeout(() => {
         onClose();
-      }, 150); // Ajusté un poco el tiempo para que se vea la animación al cerrar
-    }
-  };
-
-  const handleRoleChange = (role: UserRole) => {
-    onChangeRole(role);
-    if (onClose) {
-      setTimeout(() => {
-        onClose();
       }, 150);
     }
   };
@@ -71,12 +62,11 @@ export default function Sidebar({
   return (
     <aside 
       id="sidebar-container" 
-      // <-- AQUÍ ESTÁ LA MAGIA RESPONSIVA: Animaciones y transformaciones para ocultar/mostrar
       className={`w-72 bg-slate-950 text-white flex flex-col h-screen fixed left-0 top-0 border-r border-slate-800 shadow-2xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
         isOpen ? "translate-x-0" : "-translate-x-full"
       }`}
     >
-      {/* INTECA Brand Header reproducing logo */}
+      {/* INTECA Brand Header */}
       <div id="sidebar-logo-header" className="p-6 border-b border-slate-800 flex flex-col items-center">
         <div className="flex items-center gap-3">
           <svg className="w-14 h-14" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -103,9 +93,9 @@ export default function Sidebar({
       {/* User Quick Info */}
       <div id="sidebar-user-card" className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center gap-3">
         <img 
-          src={currentUser.avatar} 
+          src={currentUser.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=inteca"} 
           alt={currentUser.name} 
-          className="w-10 h-10 rounded-full border-2 border-emerald-500 object-cover bg-white" 
+          className="w-10 h-10 rounded-full border-2 border-emerald-500 object-cover bg-white shrink-0" 
         />
         <div className="overflow-hidden">
           <h4 className="font-semibold text-sm truncate text-white">{currentUser.name}</h4>
@@ -138,29 +128,8 @@ export default function Sidebar({
         })}
       </nav>
 
-      {/* Interactive Role Switcher in Sidebar Footer */}
-      <div id="sidebar-role-switcher-container" className="p-4 mx-4 mb-4 bg-slate-900 border border-slate-800 rounded-2xl">
-        <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-semibold mb-2">
-          <ShieldAlert className="w-3.5 h-3.5" />
-          <span>Vista de Prueba Académica:</span>
-        </div>
-        <select
-          value={currentUser.role}
-          onChange={(e) => handleRoleChange(e.target.value as UserRole)}
-          className="w-full bg-slate-950 border border-slate-700 text-xs text-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-emerald-500 focus:outline-none cursor-pointer"
-        >
-          <option value="student">Estudiante</option>
-          <option value="teacher">Profesor</option>
-          <option value="observer">Auditor / SISALRIL</option>
-          <option value="admin">Administrador TI</option>
-        </select>
-        <p className="text-[10px] text-slate-500 mt-2 leading-tight">
-          Cambia de rol para simular accesos en la plataforma.
-        </p>
-      </div>
-
       {/* Logout button */}
-      <div id="sidebar-footer-logout" className="p-4 border-t border-slate-800 flex items-center justify-between">
+      <div id="sidebar-footer-logout" className="p-4 border-t border-slate-800 flex items-center justify-between mt-auto">
         <button 
           onClick={onLogout}
           className="flex items-center gap-2 text-slate-400 hover:text-rose-400 transition-colors duration-150 text-sm font-medium w-full"
@@ -168,7 +137,7 @@ export default function Sidebar({
           <LogOut className="w-4 h-4" />
           <span>Cerrar Sesión</span>
         </button>
-        <span className="text-[10px] text-slate-600 font-mono">v3.2-IA</span>
+        <span className="text-[10px] text-slate-600 font-mono tracking-widest font-bold">v4.0-PRO</span>
       </div>
     </aside>
   );

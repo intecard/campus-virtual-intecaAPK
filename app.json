@@ -1,12 +1,23 @@
 {
   "expo": {
+    "name": "INTECA Campus",
+    "slug": "inteca-campus-virtual",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#0f172a",
     "extra": {
       "eas": {
         "projectId": "45929277-f87e-4b51-8c62-dca719f0ef8f"
       }
     },
     "android": {
-      "package": "com.elyami3030.reactexample"
+      "package": "com.elyami3030.reactexample",
+      "versionCode": 1
+    },
+    "ios": {
+      "bundleIdentifier": "com.elyami3030.reactexample",
+      "buildNumber": "1.0.0"
     }
   }
 }

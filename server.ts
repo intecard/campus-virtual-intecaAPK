@@ -9,7 +9,38 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const PORT = 3000;
+// 1. ESCUDO DE SEGURIDAD: Oculta la firma del servidor
+app.disable("x-powered-by"); 
+
+// 2. ESCUDO DE SEGURIDAD: Puerto Dinámico para Producción (CORREGIDO)
+const PORT = Number(process.env.PORT) || 3000;
+
+// 3. ESCUDO DE SEGURIDAD: Limitador de Peticiones Anti-DDoS (En memoria)
+const requestCounts = new Map<string, { count: number, resetTime: number }>();
+const aiRateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const ip = req.ip || req.socket.remoteAddress || "unknown_ip";
+  const now = Date.now();
+  const userRecord = requestCounts.get(ip);
+
+  if (!userRecord || now > userRecord.resetTime) {
+    requestCounts.set(ip, { count: 1, resetTime: now + 60000 }); // Ventana de 1 minuto
+    next();
+  } else if (userRecord.count < 15) { // Límite: 15 consultas a la IA por minuto por usuario
+    userRecord.count++;
+    next();
+  } else {
+    res.status(429).json({ 
+      error: "Alerta de saturación: Has superado el límite de consultas. Espera 60 segundos.",
+      isSimulated: true,
+      text: "Has alcanzado el límite de consultas por minuto. Toma un breve descanso y vuelve a intentarlo.",
+      feedback: { score: 0, critique: "Límite de consultas excedido.", plagiarismScore: 0, plagiarismReport: "", strengths: [], improvements: [] },
+      quizzes: []
+    });
+  }
+};
+
+// Aplicar el escudo Anti-DDoS solo a las rutas de la IA
+app.use("/api/", aiRateLimiter);
 
 // Initialize Gemini SDK with telemetry header
 const apiKey = process.env.GEMINI_API_KEY;

@@ -16,7 +16,7 @@ import FilesView from "./components/FilesView";
 import SettingsView from "./components/SettingsView";
 import AdminView from "./components/AdminView";
 import AuthPage from "./components/AuthPage";
-import { UserRole, UserProfile, Course, LiveClass } from "./types";
+import { UserProfile, Course, LiveClass } from "./types";
 
 // Firebase Imports
 import { auth, db, seedInitialDatabaseIfEmpty, getUserProfile, createUserProfile, updateUserProfileInDB, logUserActivity } from "./firebase";
@@ -129,62 +129,6 @@ export default function App() {
     };
   }, [currentUser]);
 
-  const handleChangeRole = async (role: UserRole) => {
-    if (!currentUser) return;
-    
-    const roleAvatars: Record<UserRole, string> = {
-      student: "https://api.dicebear.com/7.x/adventurer/svg?seed=luis",
-      teacher: "https://api.dicebear.com/7.x/adventurer/svg?seed=carlos",
-      admin: "https://api.dicebear.com/7.x/adventurer/svg?seed=diana",
-      observer: "https://api.dicebear.com/7.x/adventurer/svg?seed=auditor"
-    };
-
-    const roleNames: Record<UserRole, string> = {
-      student: "Luis Ramírez Escalante",
-      teacher: "Prof. Carlos Mendoza",
-      admin: "Ing. Diana Guerrero (Admin)",
-      observer: "Auditor SISALRIL"
-    };
-
-    const roleAcademicIds: Record<UserRole, string> = {
-      student: "INTECA-2026-9481",
-      teacher: "INTECA-DOC-4281",
-      admin: "INTECA-ADM-001",
-      observer: "INTECA-GOV-001"
-    };
-
-    const updatedUser: UserProfile = {
-      ...currentUser,
-      role,
-      name: roleNames[role],
-      avatar: roleAvatars[role],
-      academicId: roleAcademicIds[role]
-    };
-
-    try {
-      await updateUserProfileInDB(currentUser.id, {
-        role,
-        name: updatedUser.name,
-        avatar: updatedUser.avatar,
-        academicId: updatedUser.academicId
-      });
-
-      await logUserActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.email,
-        currentUser.role,
-        "ROLE_SWITCH_DEMO",
-        `Cambió temporalmente su rol a "${role.toUpperCase()}" en modo de prueba académica.`
-      );
-
-      setCurrentUser(updatedUser);
-      setActiveTab("dashboard");
-    } catch (err) {
-      console.error("Failed to switch role in Firestore:", err);
-    }
-  };
-
   const handleUpdateProfile = async (profileData: Partial<UserProfile>) => {
     if (!currentUser) return;
     try {
@@ -290,7 +234,6 @@ export default function App() {
         activeTab={activeTab} 
         setActiveTab={setActiveTab}
         currentUser={currentUser} 
-        onChangeRole={handleChangeRole}
         onLogout={handleLogout}
         onClose={() => setSidebarOpen(false)}
         isOpen={sidebarOpen}
@@ -405,7 +348,7 @@ export default function App() {
             <SettingsView 
               currentUser={currentUser} 
               onChangeProfile={handleUpdateProfile}
-              onChangeRole={handleChangeRole}
+              // El rol ya no se puede cambiar desde la configuración
             />
           )}
         </div>
@@ -416,7 +359,7 @@ export default function App() {
           <div className="flex gap-4">
             <a href="#" onClick={(e) => { e.preventDefault(); alert("Auditoría de privacidad conforme a HIPAA / GDPR activa."); }} className="hover:underline">Políticas de Privacidad</a>
             <span className="text-slate-200">|</span>
-            <a href="#" onClick={(e) => { e.preventDefault(); alert("Contacto: soporte@inteca.edu.co"); }} className="hover:underline">Soporte LMS</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); alert("Contacto: soporte@inteca.edu.do"); }} className="hover:underline">Soporte LMS</a>
           </div>
         </footer>
 

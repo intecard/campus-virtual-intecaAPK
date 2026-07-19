@@ -53,7 +53,7 @@ export interface Course {
   teacher: string;
   progress?: number;
   studentsCount?: number;
-  schedule: string;
+  schedule?: string;
   category: string;
   duration?: string;
   level?: string;
@@ -124,8 +124,10 @@ export interface CloudFile {
   id: string;
   name: string;
   size: string;
-  type: 'pdf' | 'doc' | 'xls' | 'ppt' | 'image' | 'video';
-  source: 'Drive' | 'OneDrive' | 'Dropbox' | 'INTECA Cloud';
+  type: string; // Flexibilidad para Firebase
+  source: string; // Flexibilidad para Firebase
   modifiedAt: string;
   version: number;
+  url?: string; // <-- AÑADIDO PARA LA BIBLIOTECA CLOUD
+  createdAt?: any; // <-- AÑADIDO PARA ORDENAMIENTO EN FIREBASE
 }

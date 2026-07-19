@@ -6,25 +6,25 @@ import {
   ShieldCheck, 
   Save,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Award,
   Globe
 } from "lucide-react";
-import { UserProfile, UserRole } from "../types";
+import { UserProfile } from "../types";
+import { db } from "../firebase";
+import { doc, updateDoc } from "firebase/firestore";
 
+// AQUÍ ESTÁ LA CORRECCIÓN: Eliminamos onChangeRole de la interfaz
 interface SettingsViewProps {
   currentUser: UserProfile;
   onChangeProfile: (data: Partial<UserProfile>) => void;
-  onChangeRole: (role: UserRole) => void;
 }
 
-export default function SettingsView({ currentUser, onChangeProfile, onChangeRole }: SettingsViewProps) {
+export default function SettingsView({ currentUser, onChangeProfile }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   
   // Profile States
   const [userName, setUserName] = useState(currentUser.name);
-  const [userEmail, setUserEmail] = useState(currentUser.email);
   const [userPhone, setUserPhone] = useState(currentUser.phone || "");
   const [userAvatar, setUserAvatar] = useState(currentUser.avatar || "");
   const [saving, setSaving] = useState(false);
@@ -36,22 +36,38 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
   const [enrollStep, setEnrollStep] = useState(0);
   const [verificationCode, setVerificationCode] = useState("");
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  // ==========================================
+  // GUARDAR PERFIL REAL EN FIREBASE
+  // ==========================================
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setSaveSuccess(false);
     
-    setTimeout(() => {
-      onChangeProfile({
+    try {
+      // Conexión real a la base de datos
+      const userRef = doc(db, "users", currentUser.id);
+      await updateDoc(userRef, {
         name: userName,
-        email: userEmail,
         phone: userPhone,
         avatar: userAvatar
       });
-      setSaving(false);
+
+      // Actualizar el estado global en App.tsx
+      onChangeProfile({
+        name: userName,
+        phone: userPhone,
+        avatar: userAvatar
+      });
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    }, 1200);
+    } catch (error) {
+      console.error("Error al actualizar el perfil:", error);
+      alert("Hubo un error de conexión al intentar guardar los cambios.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEnroll2FA = () => {
@@ -70,7 +86,7 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
   };
 
   return (
-    <div id="settings-view-root" className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
+    <div id="settings-view-root" className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500 pb-10">
       <div>
         <span className="text-xs font-mono font-bold text-slate-500 uppercase tracking-wider">Gestión de Identidad Institucional</span>
         <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Configuración de Cuenta INTECA</h1>
@@ -126,14 +142,14 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <h2 className="text-lg font-bold text-slate-900">Información Personal</h2>
                 <span className="text-[10px] bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-1 rounded-full font-bold uppercase tracking-wider">
-                  Activo
+                  Cuenta Activa
                 </span>
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 <div className="flex items-center gap-6">
                   <img 
-                    src={userAvatar} 
+                    src={userAvatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=inteca"} 
                     alt="Avatar" 
                     className="w-20 h-20 rounded-full border border-slate-200 bg-slate-50 object-cover"
                   />
@@ -143,6 +159,7 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
                       type="text"
                       value={userAvatar}
                       onChange={(e) => setUserAvatar(e.target.value)}
+                      placeholder="https://ejemplo.com/mifoto.jpg"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-all font-mono"
                     />
                   </div>
@@ -160,10 +177,10 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Matrícula / Cédula Escolar:</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Matrícula / ID Escolar:</label>
                     <input
                       type="text"
-                      value={currentUser.academicId}
+                      value={currentUser.academicId || "ID No Asignado"}
                       disabled
                       className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-500 font-mono cursor-not-allowed"
                     />
@@ -172,14 +189,17 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 mb-1">Correo Electrónico Institucional:</label>
+                    <label className="block text-xs font-bold text-slate-600 mb-1 flex justify-between">
+                      <span>Correo Electrónico Institucional:</span>
+                      <span className="text-[9px] text-rose-500 uppercase tracking-wider">No Editable</span>
+                    </label>
                     <input
                       type="email"
-                      value={userEmail}
-                      onChange={(e) => setUserEmail(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-all font-semibold"
-                      required
+                      value={currentUser.email}
+                      disabled
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-500 font-semibold cursor-not-allowed"
                     />
+                    <p className="text-[10px] text-slate-400 mt-1">Para cambiar tu correo, contacta al Administrador TI.</p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">Teléfono de Contacto:</label>
@@ -197,19 +217,19 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
                   {saveSuccess ? (
                     <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5 animate-pulse">
                       <CheckCircle2 className="w-4 h-4" />
-                      ¡Perfil de INTECA guardado exitosamente!
+                      ¡Perfil guardado y sincronizado!
                     </span>
                   ) : (
-                    <span className="text-[10px] text-slate-400">Última sincronización: Hoy</span>
+                    <span className="text-[10px] text-slate-400">Tus datos están protegidos por cifrado AES-256.</span>
                   )}
                   
                   <button
                     type="submit"
                     disabled={saving}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-6 rounded-xl transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 shadow-md disabled:opacity-50"
                   >
                     {saving ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /><span>Guardando...</span></>
+                      <><Loader2 className="w-4 h-4 animate-spin" /><span>Sincronizando...</span></>
                     ) : (
                       <><Save className="w-4 h-4" /><span>Guardar Cambios</span></>
                     )}
@@ -220,20 +240,22 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
               <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
                 <div className="flex justify-between items-center">
                   <h3 className="font-bold text-slate-900 font-display flex items-center gap-2 text-sm">
-                    <Award className="w-4 h-4 text-emerald-600" />
-                    <span>Privilegios Académicos de Rol</span>
+                    <Award className="w-4 h-4 text-sky-600" />
+                    <span>Nivel de Acceso Académico</span>
                   </h3>
-                  <select
-                    value={currentUser.role}
-                    onChange={(e) => onChangeRole(e.target.value as UserRole)}
-                    className="bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                  >
-                    <option value="student">Estudiante</option>
-                    <option value="teacher">Profesor</option>
-                    <option value="observer">Auditor / Regulador</option>
-                    <option value="admin">Administrador TI</option>
-                  </select>
+                  
+                  <span className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                    currentUser.role === 'admin' ? 'bg-rose-100 text-rose-700 border border-rose-200' :
+                    currentUser.role === 'teacher' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                    currentUser.role === 'observer' ? 'bg-sky-100 text-sky-700 border border-sky-200' :
+                    'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                  }`}>
+                    {currentUser.role}
+                  </span>
                 </div>
+                <p className="text-xs text-slate-500">
+                  Tu nivel de acceso determina las funciones que puedes usar en el campus. Solo la Consola de Administración Central puede modificar esta credencial.
+                </p>
               </div>
             </div>
           )}
@@ -265,6 +287,7 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                     <div>
                       <p className="font-bold text-sm">✓ Doble Factor Activo</p>
+                      <p className="text-emerald-700 mt-1">Tu cuenta está blindada contra accesos no autorizados.</p>
                     </div>
                   </div>
                 )}
@@ -335,7 +358,18 @@ export default function SettingsView({ currentUser, onChangeProfile, onChangeRol
               </div>
               <div className="space-y-3">
                 <label className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl bg-white cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
-                  <span className="font-bold text-sm text-slate-900">Calificaciones y Entregas</span>
+                  <div>
+                    <span className="font-bold text-sm text-slate-900 block">Calificaciones y Entregas</span>
+                    <span className="text-[10px] text-slate-500">Notificaciones sobre notas y tareas.</span>
+                  </div>
+                  <input type="checkbox" defaultChecked className="w-4 h-4 text-emerald-500 rounded" />
+                </label>
+                
+                <label className="flex items-center justify-between p-4 border border-slate-100 rounded-2xl bg-white cursor-pointer hover:bg-slate-50 transition-colors shadow-sm">
+                  <div>
+                    <span className="font-bold text-sm text-slate-900 block">Anuncios de la Institución</span>
+                    <span className="text-[10px] text-slate-500">Avisos globales del Administrador TI.</span>
+                  </div>
                   <input type="checkbox" defaultChecked className="w-4 h-4 text-emerald-500 rounded" />
                 </label>
               </div>

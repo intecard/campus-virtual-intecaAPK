@@ -1,6 +1,18 @@
 {
   "name": "Campus Virtual INTECA",
+  "short_name": "INTECA Live",
+  "version": "1.0.0",
+  "author": "Instituto Técnico del Caribe",
   "description": "Campus Virtual LMS moderno, inteligente y automatizado para el Instituto Técnico del Caribe (INTECA), impulsado por Inteligencia Artificial.",
-  "requestFramePermissions": ["camera", "microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "display-capture",
+    "clipboard-write",
+    "autoplay",
+    "fullscreen"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

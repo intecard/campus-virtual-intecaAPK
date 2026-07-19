@@ -1,61 +1,184 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   Video, 
   Mic, 
-  MicOff, 
-  VideoOff, 
   Tv, 
   Hand, 
   MessageSquare, 
-  Sparkles, 
   Users, 
   LogOut, 
   Palette, 
   Eraser, 
-  FileText
+  FileText,
+  Link as LinkIcon,
+  Play,
+  Upload,
+  Clock,
+  Loader2,
+  Trash2,
+  Plus
 } from "lucide-react";
 import { UserProfile } from "../types";
+import { db } from "../firebase";
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  serverTimestamp,
+  deleteDoc,
+  doc
+} from "firebase/firestore";
 
 interface VirtualClassroomProps {
   currentUser: UserProfile;
 }
 
 export default function VirtualClassroom({ currentUser }: VirtualClassroomProps) {
-  const [isCamOn, setIsCamOn] = useState(true);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [hasHandRaised, setHasHandRaised] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'participants' | 'whiteboard' | 'ai'>('ai');
+  // ==========================================
+  // ESTADOS DE LA SALA (LOBBY vs EN LLAMADA)
+  // ==========================================
+  const [isInRoom, setIsInRoom] = useState(false);
+  const [roomCode, setRoomCode] = useState("");
+  const [activeTab, setActiveTab] = useState<'chat' | 'whiteboard' | 'recordings'>('chat');
 
+  // ==========================================
+  // ESTADOS DE FIREBASE (CHAT Y GRABACIONES)
+  // ==========================================
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [recordings, setRecordings] = useState<any[]>([]);
+  const [loadingRecordings, setLoadingRecordings] = useState(true);
+
+  // Estados para subir nueva grabación
+  const [uploadingRecord, setUploadingRecord] = useState(false);
+  const [newRecordTitle, setNewRecordTitle] = useState("");
+  const [newRecordUrl, setNewRecordUrl] = useState("");
+
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // ==========================================
+  // ESTADOS DE LA PIZARRA VIRTUAL
+  // ==========================================
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState('#10b981'); 
   const [brushSize, setBrushSize] = useState(4);
 
-  const [chatMessages, setChatMessages] = useState([
-    { sender: "Soporte Técnico", text: "¡Bienvenidos al Aula Virtual INTECA! La clase está siendo grabada.", time: "12:00" },
-    { sender: "Prof. Mendoza", text: "Hola a todos, hoy analizaremos telemetría de emergencia rural.", time: "12:02" },
-    { sender: "Clara Bermúdez", text: "Hola profesor, ¿cuáles son los límites de latencia?", time: "12:03" }
-  ]);
-  const [newMessage, setNewMessage] = useState("");
+  // 1. CARGAR GRABACIONES GLOBALES DESDE FIREBASE
+  useEffect(() => {
+    const q = query(collection(db, "class_recordings"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const recs: any[] = [];
+      snapshot.forEach(doc => recs.push({ id: doc.id, ...doc.data() }));
+      setRecordings(recs);
+      setLoadingRecordings(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  const [selectedLanguage, setSelectedLanguage] = useState<'es' | 'en' | 'fr'>('es');
-  const [transcripts, setTranscripts] = useState([
-    {
-      speaker: "Prof. Mendoza",
-      es: "Bienvenidos a la sesión técnica. Cuando enviamos telemetría médica desde una ambulancia rural, la latencia es crítica.",
-      en: "Welcome to the technical session. When we send medical telemetry from a rural ambulance, latency is critical.",
-      fr: "Bienvenue à la session technique. Lorsque nous envoyons de la télémétrie médicale depuis une ambulance rurale, la latence est critique."
-    },
-    {
-      speaker: "Prof. Mendoza",
-      es: "Por ello, implementamos cifrado ligero AES-128 que consume menos recursos del canal satelital y asegura el flujo continuo.",
-      en: "Therefore, we implement lightweight AES-128 encryption that consumes fewer satellite channel resources and ensures continuous flow.",
-      fr: "C'est pourquoi nous implémentons un chiffrement léger AES-128 qui consomme moins de ressources du canal satellite et assure un flux continu."
+  // 2. CARGAR CHAT DE LA SALA ACTUAL EN TIEMPO REAL
+  useEffect(() => {
+    if (!isInRoom || !roomCode) return;
+    
+    const q = query(collection(db, `class_chat_${roomCode}`), orderBy("timestamp", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: any[] = [];
+      snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+      setChatMessages(msgs);
+      setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    });
+    return () => unsubscribe();
+  }, [isInRoom, roomCode]);
+
+  // ==========================================
+  // FUNCIONES DE LA SALA
+  // ==========================================
+  const joinRoom = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const code = roomCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!code) {
+      alert("Ingresa un código de sala válido.");
+      return;
     }
-  ]);
-  const [aiSummary, setAiSummary] = useState("Soporte vital remoto coordinado. El tutor sugiere estudiar la resiliencia climática de enlaces microondas de 2.4 GHz en zonas rurales.");
+    setRoomCode(code);
+    setIsInRoom(true);
+  };
 
+  const createNewRoom = () => {
+    const newCode = Math.random().toString(36).substring(2, 8);
+    setRoomCode(newCode);
+    setIsInRoom(true);
+  };
+
+  const leaveRoom = () => {
+    if (window.confirm("¿Seguro que deseas salir de la clase en vivo?")) {
+      setIsInRoom(false);
+      setRoomCode("");
+      setChatMessages([]);
+    }
+  };
+
+  // ==========================================
+  // FUNCIONES DE CHAT FIREBASE
+  // ==========================================
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!newMessage.trim() || !roomCode) return;
+
+    const textToSend = newMessage;
+    setNewMessage("");
+
+    try {
+      await addDoc(collection(db, `class_chat_${roomCode}`), {
+        senderName: currentUser.name,
+        senderRole: currentUser.role,
+        text: textToSend,
+        timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: serverTimestamp()
+      });
+    } catch (error) {
+      console.error("Error enviando mensaje:", error);
+    }
+  };
+
+  // ==========================================
+  // FUNCIONES DE GRABACIONES FIREBASE
+  // ==========================================
+  const handleUploadRecording = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRecordTitle || !newRecordUrl) return;
+
+    setUploadingRecord(true);
+    try {
+      await addDoc(collection(db, "class_recordings"), {
+        title: newRecordTitle,
+        url: newRecordUrl,
+        uploadedBy: currentUser.name,
+        dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
+        createdAt: serverTimestamp()
+      });
+      setNewRecordTitle("");
+      setNewRecordUrl("");
+      alert("Grabación publicada exitosamente.");
+    } catch (error) {
+      console.error("Error guardando grabación:", error);
+      alert("Error al guardar la grabación en la base de datos.");
+    } finally {
+      setUploadingRecord(false);
+    }
+  };
+
+  const handleDeleteRecording = async (id: string) => {
+    if (window.confirm("¿Eliminar esta grabación de la plataforma?")) {
+      await deleteDoc(doc(db, "class_recordings", id));
+    }
+  };
+
+  // ==========================================
+  // FUNCIONES DE PIZARRA
+  // ==========================================
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -97,9 +220,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.stroke();
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
+  const stopDrawing = () => setIsDrawing(false);
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
@@ -110,221 +231,280 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handleSendMessage = () => {
-    if (!newMessage.trim()) return;
-    setChatMessages(prev => [
-      ...prev,
-      { sender: currentUser.name, text: newMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
-    ]);
-    setNewMessage("");
-  };
 
-  return (
-    <div id="virtual-classroom-root" className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <span className="text-xs font-mono font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
-          <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse"></span>
-          Salón de Videoconferencia HD • INTECA Live
-        </span>
-        <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Sala Virtual: Redes Críticas y Teleasistencia</h1>
-      </div>
+  // ==========================================
+  // RENDER 1: LOBBY (FUERA DE LLAMADA)
+  // ==========================================
+  if (!isInRoom) {
+    return (
+      <div id="virtual-classroom-lobby" className="space-y-6 animate-in fade-in duration-500 pb-10">
+        <div>
+          <span className="text-xs font-mono font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse"></span>
+            Centro de Videoconferencias HD
+          </span>
+          <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Aula Virtual INTECA Live</h1>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <div className="lg:col-span-2 space-y-4">
-          <div className="relative aspect-video bg-slate-950 rounded-3xl overflow-hidden border border-slate-800 shadow-lg flex flex-col justify-between p-4">
-            
-            <div className="flex justify-between items-center z-10 w-full">
-              <span className="bg-black/60 backdrop-blur-md text-white text-[10px] px-3 py-1 rounded-full font-mono tracking-wider flex items-center gap-1.5 border border-white/5">
-                <Users className="w-3.5 h-3.5 text-emerald-500" />
-                <span>14 Alumnos Conectados</span>
-              </span>
-              <span className="bg-rose-500 text-white text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-widest animate-pulse">
-                Grabando HD
-              </span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Unirse o Crear Sala */}
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+            <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4">
+              <Video className="w-8 h-8" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
+              <p className="text-sm text-slate-500 mt-1">Ingresa el código proporcionado por tu profesor o crea una nueva sala instantánea.</p>
             </div>
 
-            <div className="absolute inset-0 flex items-center justify-center">
-              {isCamOn ? (
-                <div className="w-full h-full relative">
-                  <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-center p-8">
-                    <div className="bg-sky-900/30 p-6 rounded-3xl border border-sky-800/50 max-w-md space-y-3">
-                      <Tv className="w-12 h-12 text-emerald-500 mx-auto" />
-                      <h4 className="font-display font-bold text-slate-100 text-sm md:text-base">Transmisión de Pantalla del Instructor</h4>
-                      <p className="text-xs text-slate-400">Prof. Carlos Mendoza está compartiendo el diagrama de flujos de Telemetría Clínica para Emergencias Rurales.</p>
-                      <div className="bg-black/40 p-3 rounded-xl border border-white/5 font-mono text-[10px] text-emerald-400 flex justify-between items-center">
-                        <span>[ Ambulancia Rural ]</span>
-                        <span className="text-white">-- AES-128-GCM --&gt;</span>
-                        <span>[ Central Clínico ]</span>
-                      </div>
-                    </div>
-                  </div>
+            <form onSubmit={joinRoom} className="space-y-4 pt-4 border-t border-slate-100">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={roomCode}
+                    onChange={(e) => setRoomCode(e.target.value)}
+                    placeholder="Ej. farma101"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
+                    Unirse
+                  </button>
+                </div>
+              </div>
+            </form>
 
-                  <div className="absolute bottom-4 right-4 w-32 h-24 bg-slate-800 rounded-2xl overflow-hidden border-2 border-emerald-500 shadow-lg z-10">
-                    <img 
-                      src="https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=200" 
-                      alt="Profesor" 
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-[8px] text-white">
-                      Prof. Mendoza
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center space-y-3">
-                  <VideoOff className="w-12 h-12 text-slate-600 mx-auto" />
-                  <p className="text-xs text-slate-400">Has apagado la transmisión de video.</p>
-                </div>
-              )}
-            </div>
-
-            <div className="z-10 self-start mt-auto">
-              {hasHandRaised && (
-                <div className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-lg border border-emerald-500/30">
-                  <Hand className="w-3.5 h-3.5 fill-white" />
-                  <span>Has levantado la mano para participar</span>
-                </div>
-              )}
-            </div>
+            {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+              <div className="pt-4 border-t border-slate-100">
+                <button 
+                  onClick={createNewRoom}
+                  className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  <Plus className="w-5 h-5" /> Iniciar Nueva Clase en Vivo
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex flex-wrap justify-between items-center gap-4">
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setIsMicOn(!isMicOn)}
-                className={`p-3 rounded-xl border transition-all ${isMicOn ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-rose-500/10 border-rose-500 text-rose-500 hover:bg-rose-500/20'}`}
-              >
-                {isMicOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
-              </button>
-              <button 
-                onClick={() => setIsCamOn(!isCamOn)}
-                className={`p-3 rounded-xl border transition-all ${isCamOn ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-rose-500/10 border-rose-500 text-rose-500 hover:bg-rose-500/20'}`}
-              >
-                {isCamOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
-              </button>
-              <button 
-                onClick={() => setIsScreenSharing(!isScreenSharing)}
-                className={`p-3 rounded-xl border transition-all ${isScreenSharing ? 'bg-emerald-50 border-emerald-500 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <Tv className="w-5 h-5" />
-              </button>
-              <button 
-                onClick={() => setHasHandRaised(!hasHandRaised)}
-                className={`p-3 rounded-xl border transition-all ${hasHandRaised ? 'bg-emerald-50 border-emerald-500 text-emerald-600 hover:bg-emerald-100' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}`}
-              >
-                <Hand className="w-5 h-5" />
-              </button>
+          {/* Repositorio de Grabaciones */}
+          <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Tv className="w-5 h-5 text-emerald-500" /> Archivo de Grabaciones
+              </h2>
             </div>
 
-            <div className="flex gap-2 text-xs">
-              <button className="bg-sky-600 hover:bg-sky-700 text-white font-bold py-2 px-4 rounded-xl transition-all shadow-sm">
-                Asistencia Automática IA
-              </button>
-              <button className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1.5 shadow-sm">
-                <LogOut className="w-4 h-4" />
-                <span>Salir</span>
-              </button>
+            <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none">
+              {loadingRecordings ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                  <p className="text-xs font-mono font-bold uppercase tracking-wider">Cargando archivo...</p>
+                </div>
+              ) : recordings.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                  <Tv className="w-12 h-12 text-slate-200" />
+                  <p className="text-sm font-bold text-slate-600">No hay clases grabadas</p>
+                  <p className="text-xs text-center">Las clases guardadas por los profesores aparecerán aquí.</p>
+                </div>
+              ) : (
+                recordings.map((rec) => (
+                  <div key={rec.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-3 group hover:border-emerald-500/30 transition-all">
+                    <div>
+                      <h4 className="font-bold text-slate-800 text-sm leading-snug">{rec.title}</h4>
+                      <p className="text-[10px] text-slate-500 font-medium mt-1">Por: {rec.uploadedBy} • {rec.dateString}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <a 
+                        href={rec.url} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                      >
+                        <Play className="w-3 h-3" /> Ver Grabación
+                      </a>
+                      
+                      {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
+                        <button 
+                          onClick={() => handleDeleteRecording(rec.id)}
+                          className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
+                          title="Eliminar grabación"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col h-[520px] overflow-hidden">
-          <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1">
+  // ==========================================
+  // RENDER 2: SALA ACTIVA (LLAMADA Y HERRAMIENTAS)
+  // ==========================================
+  return (
+    <div id="virtual-classroom-active" className="space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-120px)] flex flex-col">
+      {/* Header de la Sala Activa */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 p-4 rounded-2xl text-white shadow-lg shrink-0">
+        <div>
+          <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            En Transmisión • Sala Segura
+          </span>
+          <h1 className="text-xl font-display font-bold text-white mt-0.5">Clase en Vivo</h1>
+        </div>
+        
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold flex-1 md:flex-none text-center">
+            Código: <span className="text-emerald-400">{roomCode}</span>
+          </div>
+          <button 
+            onClick={leaveRoom}
+            className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden md:inline">Salir de la Clase</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+        
+        {/* ÁREA DE VIDEO (INTEGRACIÓN JITSI MEET) */}
+        <div className="lg:w-2/3 bg-black rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col relative h-[50vh] lg:h-auto shrink-0 lg:shrink">
+          
+          {/* El motor de WebRTC de Jitsi incrustado. 
+              Esto maneja cámara, micro, pantalla compartida y red de forma profesional. */}
+          <iframe
+            allow="camera; microphone; display-capture; autoplay; clipboard-write"
+            src={`https://meet.jit.si/inteca_live_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true`}
+            className="w-full h-full border-0"
+            title="Video Classroom INTECA"
+          />
+
+        </div>
+
+        {/* ÁREA DE HERRAMIENTAS (CHAT, PIZARRA, GRABACIONES) */}
+        <div className="lg:w-1/3 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col h-[50vh] lg:h-auto overflow-hidden">
+          
+          {/* Tabs de Herramientas */}
+          <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1 shrink-0">
             <button
-              onClick={() => setActiveTab('ai')}
-              className={`flex-1 text-center py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'ai' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              onClick={() => setActiveTab('chat')}
+              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'chat' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              IA Transcriptor
+              <MessageSquare className="w-3.5 h-3.5" /> Chat Live
             </button>
             <button
               onClick={() => setActiveTab('whiteboard')}
-              className={`flex-1 text-center py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'whiteboard' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'whiteboard' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              Whiteboard
+              <Palette className="w-3.5 h-3.5" /> Pizarra
             </button>
             <button
-              onClick={() => setActiveTab('chat')}
-              className={`flex-1 text-center py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'chat' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              onClick={() => setActiveTab('recordings')}
+              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
             >
-              Chat
+              <Tv className="w-3.5 h-3.5" /> Grabar
             </button>
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto">
+          <div className="flex-1 p-4 overflow-y-auto relative bg-slate-50/30">
+            
+            {/* PESTAÑA: CHAT (FIREBASE REALTIME) */}
             {activeTab === 'chat' && (
-              <div id="classroom-chat" className="flex flex-col h-full justify-between">
-                <div className="space-y-3 overflow-y-auto max-h-[360px] pr-1">
-                  {chatMessages.map((msg, idx) => (
-                    <div key={idx} className="text-xs space-y-0.5">
-                      <div className="flex justify-between text-slate-400 font-medium">
-                        <span className="font-bold text-slate-900">{msg.sender}</span>
-                        <span>{msg.time}</span>
-                      </div>
-                      <p className="bg-slate-50 p-2.5 rounded-xl text-slate-700 leading-relaxed border border-slate-100">{msg.text}</p>
+              <div className="flex flex-col h-full absolute inset-0 p-4">
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none pb-4">
+                  {chatMessages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 opacity-60">
+                      <MessageSquare className="w-8 h-8" />
+                      <p className="text-xs font-bold">No hay mensajes aún.</p>
+                      <p className="text-[10px]">Escribe el primero en esta sala.</p>
                     </div>
-                  ))}
+                  ) : (
+                    chatMessages.map((msg, idx) => {
+                      const isMe = msg.senderName === currentUser.name;
+                      return (
+                        <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5`}>
+                          <div className="flex items-baseline gap-2">
+                            <span className="font-bold text-[11px] text-slate-700">{msg.senderName}</span>
+                            <span className="text-[9px] text-slate-400">{msg.timeString}</span>
+                          </div>
+                          <div className={`p-2.5 rounded-2xl text-xs leading-relaxed max-w-[85%] ${isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
+                            {msg.text}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={chatEndRef} />
                 </div>
 
-                <div className="flex gap-2 pt-3 border-t border-slate-100">
+                <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t border-slate-200 shrink-0 bg-white p-1 rounded-xl">
                   <input
                     type="text"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Escribe un mensaje al grupo..."
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:bg-white"
+                    placeholder="Mensaje a todos..."
+                    className="flex-1 bg-transparent border-none px-3 text-xs focus:outline-none focus:ring-0 text-slate-800"
                   />
                   <button
-                    onClick={handleSendMessage}
-                    className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-sm"
+                    type="submit"
+                    disabled={!newMessage.trim()}
+                    className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white p-2 rounded-lg transition-all shadow-sm"
                   >
-                    Enviar
+                    <MessageSquare className="w-4 h-4" />
                   </button>
-                </div>
+                </form>
               </div>
             )}
 
+            {/* PESTAÑA: PIZARRA DIGITAL */}
             {activeTab === 'whiteboard' && (
-              <div id="classroom-whiteboard" className="flex flex-col h-full space-y-4 justify-between">
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-slate-800">Pizarra Digital Interactiva</span>
-                    <button
-                      onClick={clearCanvas}
-                      className="text-xs text-rose-500 hover:text-rose-600 flex items-center gap-1 font-semibold"
-                    >
-                      <Eraser className="w-3.5 h-3.5" />
-                      <span>Limpiar</span>
-                    </button>
-                  </div>
-                  
+              <div className="flex flex-col h-full space-y-4 justify-between absolute inset-0 p-4">
+                <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0">
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider pl-2">Pizarra Local</span>
+                  <button
+                    onClick={clearCanvas}
+                    className="text-[10px] bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-colors"
+                  >
+                    <Eraser className="w-3.5 h-3.5" /> Limpiar
+                  </button>
+                </div>
+                
+                <div className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative">
                   <canvas
                     ref={canvasRef}
-                    width={280}
-                    height={260}
+                    width={400}
+                    height={400}
                     onMouseDown={startDrawing}
                     onMouseMove={draw}
                     onMouseUp={stopDrawing}
                     onMouseLeave={stopDrawing}
-                    className="border border-slate-200 rounded-xl cursor-crosshair bg-white shadow-inner block mx-auto"
+                    className="cursor-crosshair w-full h-full touch-none"
+                    style={{ width: '100%', height: '100%' }}
                   />
                 </div>
 
-                <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-                  <div className="flex gap-1.5">
+                <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0">
+                  <div className="flex gap-2">
                     {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
                       <button
                         key={col}
                         onClick={() => setBrushColor(col)}
-                        className={`w-6 h-6 rounded-full border transition-all ${brushColor === col ? 'scale-110 border-slate-400' : 'border-transparent'}`}
+                        className={`w-6 h-6 rounded-full border-2 transition-all ${brushColor === col ? 'scale-110 border-slate-400 shadow-md' : 'border-transparent'}`}
                         style={{ backgroundColor: col }}
                       />
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                    <Palette className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg">
+                    <Palette className="w-3.5 h-3.5 text-slate-400" />
                     <input
                       type="range"
                       min={1}
@@ -338,45 +518,53 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {activeTab === 'ai' && (
-              <div id="classroom-ai-transcript" className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-emerald-500 animate-pulse" />
-                    <span className="text-xs font-bold text-slate-900">Transcripción y Traducción</span>
-                  </div>
-                  
-                  <div className="flex border border-slate-200 rounded-lg overflow-hidden">
-                    {(['es', 'en', 'fr'] as const).map((lang) => (
-                      <button
-                        key={lang}
-                        onClick={() => setSelectedLanguage(lang)}
-                        className={`px-2 py-0.5 text-[9px] font-bold uppercase transition-colors ${selectedLanguage === lang ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}
-                      >
-                        {lang}
-                      </button>
-                    ))}
-                  </div>
+            {/* PESTAÑA: GUARDAR GRABACIÓN */}
+            {activeTab === 'recordings' && (
+              <div className="flex flex-col h-full absolute inset-0 p-4 space-y-4">
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-2 shrink-0">
+                  <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
+                    <Tv className="w-4 h-4" /> Guardar Clase Grabada
+                  </h3>
+                  <p className="text-[10px] text-emerald-600 leading-relaxed font-medium">
+                    Si grabaste la sesión usando tu software nativo o Drive, pega el enlace aquí para que los alumnos de esta sala puedan repasarla en el archivo general.
+                  </p>
                 </div>
 
-                <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
-                  {transcripts.map((item, idx) => (
-                    <div key={idx} className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1 text-[11px]">
-                      <span className="font-bold text-slate-900 block">{item.speaker}:</span>
-                      <p className="text-slate-700 leading-relaxed italic">
-                        &quot;{item[selectedLanguage]}&quot;
-                      </p>
+                <form onSubmit={handleUploadRecording} className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Título de la Clase</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="Ej. Clase 1: Fundamentos..."
+                      value={newRecordTitle}
+                      onChange={e => setNewRecordTitle(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Enlace del Video (Drive/YouTube)</label>
+                    <div className="relative">
+                      <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <input 
+                        type="url" 
+                        required
+                        placeholder="https://..."
+                        value={newRecordUrl}
+                        onChange={e => setNewRecordUrl(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
                     </div>
-                  ))}
-                </div>
-
-                <div className="p-3 bg-sky-50 border border-sky-100 rounded-2xl text-xs space-y-2">
-                  <div className="flex items-center gap-1.5 text-sky-700 font-bold">
-                    <FileText className="w-4 h-4 text-emerald-500" />
-                    <span>Sugerencias de Tutor IA:</span>
                   </div>
-                  <p className="text-slate-700 leading-relaxed text-[11px]">{aiSummary}</p>
-                </div>
+                  <button 
+                    type="submit" 
+                    disabled={uploadingRecord || (!newRecordTitle || !newRecordUrl)}
+                    className="w-full bg-slate-900 hover:bg-black disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-md mt-4"
+                  >
+                    {uploadingRecord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    Subir a la Base de Datos
+                  </button>
+                </form>
               </div>
             )}
 
