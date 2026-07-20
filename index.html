@@ -1,6 +1,38 @@
 <!doctype html>
 <html lang="es">
   <head>
+    <!-- INICIO DEL RADAR DE ERRORES DE INTECA -->
+    <script>
+      window.addEventListener('error', function(e) {
+        var errorMsg = e.message || 'Error desconocido';
+        var source = e.filename || 'archivo desconocido';
+        
+        // Detectar si el error es de CSS o JavaScript que no cargó
+        if (e.target && e.target.tagName) {
+          if (e.target.tagName.toLowerCase() === 'link') {
+            errorMsg = 'Fallo crítico: Android no encuentra el archivo de estilos (CSS).';
+            source = e.target.href;
+          } else if (e.target.tagName.toLowerCase() === 'script') {
+            errorMsg = 'Fallo crítico: Android no encuentra el archivo de lógica (JS).';
+            source = e.target.src;
+          }
+        }
+
+        // Crear una pantalla roja gigante para mostrar el error
+        var errorDiv = document.getElementById('pantalla-de-la-muerte');
+        if (!errorDiv) {
+          errorDiv = document.createElement('div');
+          errorDiv.id = 'pantalla-de-la-muerte';
+          errorDiv.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background-color:#b91c1c; color:white; z-index:999999; padding:20px; font-family:monospace; overflow-y:auto; word-wrap:break-word;';
+          errorDiv.innerHTML = '<h2 style="color:yellow; margin-top:0;">⚠️ DIAGNÓSTICO: LA APP ESTÁ ROTA</h2><p>Toma una captura de esto:</p>';
+          document.body.prepend(errorDiv);
+        }
+        
+        errorDiv.innerHTML += '<div style="border-bottom:1px solid white; padding:10px 0;">🔴 <b>Detalle:</b> ' + errorMsg + '<br>📁 <b>Ruta fallida:</b> ' + source + '</div>';
+      }, true); // El "true" es vital para atrapar errores de archivos CSS que no cargan
+    </script>
+    <!-- FIN DEL RADAR DE ERRORES -->
+
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.png" />
     
