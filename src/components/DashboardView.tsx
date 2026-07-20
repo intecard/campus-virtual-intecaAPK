@@ -45,29 +45,32 @@ export default function DashboardView({
     day: 'numeric'
   });
 
-  const activeClass = liveClasses.find((c: LiveClass) => c.isLive);
+  const activeClass = liveClasses?.find((c: LiveClass) => c.isLive);
   
   // ==========================================
-  // CÁLCULOS DINÁMICOS REALES (Empiezan en 0)
+  // CÁLCULOS DINÁMICOS REALES (Conectados a BD)
   // ==========================================
 
-  // 1. Datos del Estudiante
-  const studentCourses = courses; // Aquí mapearemos los cursos en los que el estudiante esté matriculado
+  // 1. Datos del Estudiante (FILTRADO REAL)
+  // Solo muestra los cursos donde el correo del estudiante esté en la lista de matriculados
+  const studentCourses = courses?.filter((c: any) => 
+    c.students?.includes(currentUser.email) || c.enrolledStudents?.includes(currentUser.email)
+  ) || []; 
+  
   const overallProgress = studentCourses.length > 0 
-    ? Math.round(studentCourses.reduce((acc: number, c: Course) => acc + (c.progress || 0), 0) / studentCourses.length) 
+    ? Math.round(studentCourses.reduce((acc: number, c: any) => acc + (c.progress || 0), 0) / studentCourses.length) 
     : 0;
   
-  // Variables que luego vendrán de Firebase para el estudiante
+  // Variables de Firebase
   const studentAttendance = 0; 
   const studentCredits = 0;
   const studentAiEvals = 0;
-  const pendingTasks: any[] = []; // Array vacío hasta que programemos las tareas reales
+  const pendingTasks: any[] = []; 
 
   // 2. Datos del Profesor
-  // Filtramos los cursos donde el profesor asignado sea exactamente el usuario actual
-  const teacherCourses = courses.filter((c: Course) => c.teacher === currentUser.name);
-  const totalStudentsInCharge = teacherCourses.reduce((acc: number, c: Course) => acc + (c.studentsCount || 0), 0);
-  const teacherAverageAttendance = 0; // Empezamos en 0% hasta conectar el módulo de asistencia en vivo
+  const teacherCourses = courses?.filter((c: Course) => c.teacher === currentUser.name) || [];
+  const totalStudentsInCharge = teacherCourses.reduce((acc: number, c: any) => acc + (c.studentsCount || 0), 0);
+  const teacherAverageAttendance = 0; 
 
 
   // ==========================================
@@ -87,7 +90,7 @@ export default function DashboardView({
               <span>Entorno de Aprendizaje Verificado • Ciclo 2026</span>
             </div>
             <h1 className="text-2xl md:text-4xl font-display font-bold tracking-tight text-white">
-              Progreso Académico: {currentUser.name}
+              Progreso Académico: {currentUser?.name}
             </h1>
             <p className="text-slate-400 max-w-xl text-xs md:text-sm leading-relaxed">
               El motor cognitivo institucional estima un nivel de asimilación óptimo para tus asignaturas. Continúa con tu ruta interactiva.
@@ -146,39 +149,41 @@ export default function DashboardView({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {studentCourses.length > 0 ? (
-              studentCourses.map((course: Course) => (
+              studentCourses.map((course: any) => (
                 <div 
-                  key={course.id} 
+                  key={course?.id || Math.random()} 
                   onClick={() => setActiveTab('courses')}
                   className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-500/30 hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group"
                 >
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
-                      <span className="text-[10px] text-slate-400 font-medium">Prof. {course.teacher}</span>
+                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course?.code || 'S/N'}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">Prof. {course?.teacher || 'Por asignar'}</span>
                     </div>
-                    <h3 className="font-bold text-slate-900 group-hover:text-sky-600 transition-colors leading-snug">{course.title}</h3>
-                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{course.description}</p>
+                    <h3 className="font-bold text-slate-900 group-hover:text-sky-600 transition-colors leading-snug">{course?.title || 'Curso sin título'}</h3>
+                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{course?.description || 'Sin descripción disponible.'}</p>
                   </div>
                   <div className="mt-4 pt-4 border-t border-slate-100 space-y-1.5">
                     <div className="flex justify-between text-xs text-slate-600">
                       <span className="font-medium">Progreso de Objetivos</span>
-                      <span className="font-bold font-mono text-slate-900">{course.progress || 0}%</span>
+                      <span className="font-bold font-mono text-slate-900">{course?.progress || 0}%</span>
                     </div>
                     <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${course.progress || 0}%` }} />
+                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${course?.progress || 0}%` }} />
                     </div>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="col-span-2 p-8 text-center bg-white rounded-2xl border border-slate-100 text-slate-400 text-xs font-medium">
-                Aún no tienes asignaturas matriculadas.
+              <div className="col-span-2 p-8 text-center bg-white rounded-2xl border border-slate-100 text-slate-500 text-sm font-medium flex flex-col items-center gap-2 shadow-sm">
+                <BookOpen className="w-8 h-8 text-slate-300" />
+                <p>Aún no tienes asignaturas matriculadas.</p>
+                <p className="text-xs text-slate-400 font-normal">Cuando un profesor te agregue a su clase, aparecerá aquí.</p>
               </div>
             )}
           </div>
 
-          {currentUser.aiProfile && (
+          {currentUser?.aiProfile && (
             <div className="bg-slate-900 text-white rounded-3xl p-6 border border-slate-800 relative overflow-hidden shadow-lg">
               <div className="absolute right-[-20px] bottom-[-20px] opacity-5 pointer-events-none">
                 <Sparkles className="w-40 h-48" />
@@ -255,8 +260,8 @@ export default function DashboardView({
                 pendingTasks.map((task, idx) => (
                   <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center gap-2">
                     <div>
-                      <h4 className="text-xs font-bold text-slate-900 truncate max-w-[150px]">{task.title}</h4>
-                      <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">Límite: {task.dueDate}</p>
+                      <h4 className="text-xs font-bold text-slate-900 truncate max-w-[150px]">{task?.title}</h4>
+                      <p className="text-[10px] text-slate-400 font-medium font-mono mt-0.5">Límite: {task?.dueDate}</p>
                     </div>
                   </div>
                 ))
@@ -287,7 +292,7 @@ export default function DashboardView({
               Docente Conectado • Servidor Seguro
             </div>
             <h1 className="text-2xl md:text-4xl font-display font-bold tracking-tight">
-              Control de Cátedra: {currentUser.name}
+              Control de Cátedra: {currentUser?.name}
             </h1>
             <p className="text-slate-400 max-w-xl text-xs md:text-sm leading-relaxed">
               Consola unificada para la gestión de notas, monitoreo de asistencia en tiempo real y validación de reportes de corrección generados por el motor de inteligencia artificial.
@@ -312,14 +317,14 @@ export default function DashboardView({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {teacherCourses.length > 0 ? teacherCourses.map((course: Course) => (
-              <div key={course.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 hover:shadow-md transition-shadow">
+            {teacherCourses.length > 0 ? teacherCourses.map((course: any) => (
+              <div key={course?.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4 hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-start gap-4">
                   <div className="space-y-1.5">
-                    <span className="text-[9px] bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-bold font-mono uppercase">{course.code}</span>
-                    <h3 className="font-bold text-slate-900 leading-snug">{course.title}</h3>
+                    <span className="text-[9px] bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded font-bold font-mono uppercase">{course?.code || 'S/N'}</span>
+                    <h3 className="font-bold text-slate-900 leading-snug">{course?.title}</h3>
                   </div>
-                  <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-xl font-bold font-mono whitespace-nowrap">{course.studentsCount || 0} Matrículas</span>
+                  <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-xl font-bold font-mono whitespace-nowrap">{course?.studentsCount || 0} Matrículas</span>
                 </div>
               </div>
             )) : (
@@ -402,14 +407,14 @@ export default function DashboardView({
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {courses.length > 0 ? (
-              courses.map((course: Course) => (
-                <div key={course.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              courses.map((course: any) => (
+                <div key={course?.id} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
-                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course.code}</span>
+                      <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course?.code || 'S/N'}</span>
                       <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">Aprobado</span>
                     </div>
-                    <h3 className="font-bold text-slate-900 leading-snug">{course.title}</h3>
+                    <h3 className="font-bold text-slate-900 leading-snug">{course?.title}</h3>
                   </div>
                 </div>
               ))
@@ -460,10 +465,10 @@ export default function DashboardView({
         </div>
       </div>
 
-      {currentUser.role === 'student' && renderStudentDashboard()}
-      {currentUser.role === 'teacher' && renderTeacherDashboard()}
-      {currentUser.role === 'observer' && renderObserverDashboard()}
-      {currentUser.role === 'admin' && renderAdminDashboard()}
+      {currentUser?.role === 'student' && renderStudentDashboard()}
+      {currentUser?.role === 'teacher' && renderTeacherDashboard()}
+      {currentUser?.role === 'observer' && renderObserverDashboard()}
+      {currentUser?.role === 'admin' && renderAdminDashboard()}
     </div>
   );
 }
