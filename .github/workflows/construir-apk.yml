@@ -32,7 +32,7 @@ jobs:
         run: npm install @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
 
       - name: 🏗️ Construir Web (Vite)
-        run: npm run build
+        run: npx vite build
 
       - name: 🤖 Sincronizar proyecto con Android
         run: npx cap sync android
