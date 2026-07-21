@@ -8,13 +8,16 @@ import {
   CheckCircle2,
   Loader2,
   Award,
-  Globe
+  Globe,
+  LogOut,
+  Camera
 } from "lucide-react";
 import { UserProfile } from "../types";
-import { db } from "../firebase";
+import { auth, db, storage } from "../firebase";
 import { doc, updateDoc } from "firebase/firestore";
+import { signOut } from "firebase/auth";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// AQUÍ ESTÁ LA CORRECCIÓN: Eliminamos onChangeRole de la interfaz
 interface SettingsViewProps {
   currentUser: UserProfile;
   onChangeProfile: (data: Partial<UserProfile>) => void;
@@ -29,12 +32,37 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
   const [userAvatar, setUserAvatar] = useState(currentUser.avatar || "");
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   // 2FA States
   const [isTwoFactorEnabled, setIsTwoFactorEnabled] = useState(false);
   const [enrollingTwoFactor, setEnrollingTwoFactor] = useState(false);
   const [enrollStep, setEnrollStep] = useState(0);
   const [verificationCode, setVerificationCode] = useState("");
+
+  // ==========================================
+  // SUBIR IMAGEN DESDE LA GALERÍA A LA NUBE
+  // ==========================================
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingImage(true);
+    try {
+      // Creamos una ruta única en Storage para la nueva foto
+      const storageRef = ref(storage, `avatars/${currentUser.id}_${Date.now()}`);
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+      
+      // Actualizamos el estado de la vista con la nueva URL de la nube
+      setUserAvatar(downloadURL);
+    } catch (error) {
+      console.error("Error al subir la imagen:", error);
+      alert("Hubo un error al subir la imagen a la nube. Intenta con una foto más ligera.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   // ==========================================
   // GUARDAR PERFIL REAL EN FIREBASE
@@ -45,7 +73,6 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
     setSaveSuccess(false);
     
     try {
-      // Conexión real a la base de datos
       const userRef = doc(db, "users", currentUser.id);
       await updateDoc(userRef, {
         name: userName,
@@ -53,7 +80,6 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
         avatar: userAvatar
       });
 
-      // Actualizar el estado global en App.tsx
       onChangeProfile({
         name: userName,
         phone: userPhone,
@@ -67,6 +93,20 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
       alert("Hubo un error de conexión al intentar guardar los cambios.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // ==========================================
+  // CERRAR SESIÓN DE FORMA SEGURA
+  // ==========================================
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      // Al cerrar sesión en Firebase, el listener en App.tsx detectará el cambio
+      // y devolverá automáticamente al usuario a la pantalla de login.
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      alert("No se pudo cerrar la sesión. Verifica tu conexión.");
     }
   };
 
@@ -92,7 +132,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
         <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Configuración de Cuenta INTECA</h1>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col md:flex-row">
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col md:flex-row min-h-[500px]">
         
         {/* Sidebar Menu */}
         <div className="md:w-64 bg-slate-50 border-r border-slate-100 p-6 flex flex-col gap-2 shrink-0">
@@ -131,6 +171,17 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
             <Bell className="w-4 h-4" />
             <span>Alertas del Sistema</span>
           </button>
+
+          <div className="flex-1"></div>
+
+          {/* Botón de Cerrar Sesión */}
+          <button
+            onClick={handleLogout}
+            className="w-full text-left p-3 rounded-xl text-xs font-bold transition-all flex items-center gap-3 text-rose-500 hover:bg-rose-50 hover:text-rose-700 mt-4 border border-transparent hover:border-rose-100"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Cerrar Sesión Segura</span>
+          </button>
         </div>
 
         {/* Content Area */}
@@ -148,18 +199,39 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 <div className="flex items-center gap-6">
-                  <img 
-                    src={userAvatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=inteca"} 
-                    alt="Avatar" 
-                    className="w-20 h-20 rounded-full border border-slate-200 bg-slate-50 object-cover"
-                  />
+                  {/* Selector Interactivo de Avatar */}
+                  <div className="relative group cursor-pointer w-20 h-20 shrink-0">
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      className="hidden" 
+                      id="avatar-upload"
+                      onChange={handleImageUpload}
+                      disabled={uploadingImage}
+                    />
+                    <label htmlFor="avatar-upload" className="cursor-pointer block w-full h-full">
+                      <img 
+                        src={userAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.name}`} 
+                        alt="Avatar del Usuario" 
+                        className={`w-full h-full rounded-full border-2 border-slate-200 bg-slate-50 object-cover transition-opacity ${uploadingImage ? 'opacity-50' : 'group-hover:opacity-70'}`}
+                      />
+                      <div className={`absolute inset-0 flex items-center justify-center rounded-full transition-opacity ${uploadingImage ? 'opacity-100 bg-black/30' : 'opacity-0 group-hover:opacity-100 bg-black/40'}`}>
+                        {uploadingImage ? (
+                          <Loader2 className="w-6 h-6 text-white animate-spin" />
+                        ) : (
+                          <Camera className="w-6 h-6 text-white" />
+                        )}
+                      </div>
+                    </label>
+                  </div>
+
                   <div className="flex-1">
                     <label className="block text-xs font-bold text-slate-600 mb-1">URL de Foto de Perfil (Avatar):</label>
                     <input
                       type="text"
                       value={userAvatar}
                       onChange={(e) => setUserAvatar(e.target.value)}
-                      placeholder="https://ejemplo.com/mifoto.jpg"
+                      placeholder="Sube una imagen o pega un enlace aquí"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-all font-mono"
                     />
                   </div>
@@ -225,7 +297,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                   
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || uploadingImage}
                     className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 shadow-md disabled:opacity-50"
                   >
                     {saving ? (

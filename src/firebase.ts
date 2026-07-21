@@ -28,6 +28,8 @@ import {
   Timestamp,
   serverTimestamp
 } from "firebase/firestore";
+// AQUÍ AGREGAMOS LA IMPORTACIÓN DE STORAGE
+import { getStorage } from "firebase/storage";
 import { UserProfile, UserRole, Course, LiveClass, CloudFile, ChatMessage } from "./types";
 
 // Firebase Applet Credentials from firebase-applet-config.json
@@ -45,8 +47,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// <-- CORREGIDO: Ahora apunta directamente a tu base de datos específica para evitar el error "offline"
+// Base de datos específica
 export const db = getFirestore(app, "ai-studio-campusvirtualint-dbc5e5fa-0c2e-4740-85d5-91566cdb7d70");
+
+// AQUÍ EXPORTAMOS STORAGE PARA QUE SETTINGSVIEW LO PUEDA USAR
+export const storage = getStorage(app);
 
 // Google Auth Provider
 export const googleProvider = new GoogleAuthProvider();
