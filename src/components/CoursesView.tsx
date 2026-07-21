@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   BookOpen, ChevronRight, FolderDown, HelpCircle, Clock, AlertTriangle, ArrowLeft,
-  Sparkles, Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, Link as LinkIcon, X
+  Sparkles, Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
+  Link as LinkIcon, X, Box, UploadCloud, FolderArchive, Layers, CheckSquare, Users, UserCheck
 } from "lucide-react";
 import { Course, UserProfile, QuizQuestion } from "../types";
 import { db } from "../firebase";
-import { collection, addDoc, doc, updateDoc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs } from "firebase/firestore";
 
 interface CoursesViewProps {
   currentUser: UserProfile;
@@ -28,9 +29,34 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   // ESTADOS DEL CONSTRUCTOR DE CURSOS (STUDIO)
   // ==========================================
   const [isSaving, setIsSaving] = useState(false);
-  const [courseForm, setCourseForm] = useState<Partial<Course>>({
-    title: "", code: "INT-", category: "", description: "", duration: "4 semanas", level: "Técnico", teacher: currentUser.name, image: "", modules: []
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  
+  const [courseForm, setCourseForm] = useState<Partial<Course> & any>({
+    title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
+    level: "Técnico", teacher: currentUser.name, teacherId: "", image: "", format: "native",
+    enrolledStudents: [], modules: []
   });
+
+  const isMaster = currentUser.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+  const isAdmin = currentUser.role === 'admin' || isMaster;
+
+  // Cargar lista de usuarios para matriculación y asignación docente
+  useEffect(() => {
+    if (isAdmin || currentUser.role === 'teacher') {
+      const fetchUsers = async () => {
+        try {
+          const uSnap = await getDocs(collection(db, "users"));
+          const allU = uSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+          setTeachers(allU.filter(u => u.role === 'admin' || u.role === 'teacher'));
+          setStudents(allU.filter(u => u.role === 'student'));
+        } catch (error) {
+          console.error("Error al cargar usuarios para el Studio:", error);
+        }
+      };
+      fetchUsers();
+    }
+  }, [currentUser, isAdmin]);
 
   // ==========================================
   // ESTADOS DE EXÁMENES IA Y TAREAS
@@ -53,12 +79,20 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   // ==========================================
   // FUNCIONES DEL CONSTRUCTOR (STUDIO)
   // ==========================================
-  const openStudio = (courseToEdit?: Course) => {
+  const openStudio = (courseToEdit?: Course & any) => {
     if (courseToEdit) {
-      setCourseForm(courseToEdit);
+      setCourseForm({
+        ...courseToEdit,
+        format: courseToEdit.format || 'native',
+        teacherId: courseToEdit.teacherId || '',
+        enrolledStudents: courseToEdit.enrolledStudents || [],
+        modules: courseToEdit.modules || []
+      });
     } else {
       setCourseForm({
-        title: "", code: "INT-", category: "", description: "", duration: "4 semanas", level: "Técnico", teacher: currentUser.name, image: "", modules: []
+        title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
+        level: "Técnico", teacher: currentUser.name, teacherId: "", image: "", format: "native",
+        enrolledStudents: [], modules: []
       });
     }
     setViewMode('studio');
@@ -68,26 +102,36 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
     const newModule = {
       id: `mod_${Date.now()}`,
       title: "Nuevo Módulo",
-      description: "Descripción breve de esta unidad",
+      description: "Descripción breve",
+      hasFinalExam: false,
       lessons: []
     };
-    setCourseForm(prev => ({ ...prev, modules: [...(prev.modules || []), newModule] }));
+    setCourseForm((prev: any) => ({ ...prev, modules: [...(prev.modules || []), newModule] }));
   };
 
-  const handleAddLesson = (moduleId: string) => {
-    const newLesson: any = {
+  const handleAddLesson = (moduleId: string, type: 'video' | 'pdf' | 'quiz' | 'task' = 'video') => {
+    const newLesson = {
       id: `les_${Date.now()}`,
-      title: "Nueva Lección",
-      description: "Instrucciones",
-      type: "video",
+      title: "Nuevo Recurso",
+      description: "",
+      type: type,
       duration: "10 min",
       contentUrl: "" 
     };
     
-    setCourseForm(prev => ({
+    setCourseForm((prev: any) => ({
       ...prev,
-      modules: prev.modules?.map(m => m.id === moduleId ? { ...m, lessons: [...m.lessons, newLesson] } : m)
+      modules: prev.modules?.map((m: any) => m.id === moduleId ? { ...m, lessons: [...m.lessons, newLesson] } : m)
     }));
+  };
+
+  const toggleStudentEnrollment = (studentId: string) => {
+    const isEnrolled = courseForm.enrolledStudents.includes(studentId);
+    if (isEnrolled) {
+      setCourseForm({ ...courseForm, enrolledStudents: courseForm.enrolledStudents.filter((id: string) => id !== studentId) });
+    } else {
+      setCourseForm({ ...courseForm, enrolledStudents: [...courseForm.enrolledStudents, studentId] });
+    }
   };
 
   const saveCourseToFirebase = async () => {
@@ -100,12 +144,12 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
       if (courseForm.id) {
         const courseRef = doc(db, "courses", courseForm.id);
         await updateDoc(courseRef, courseForm);
-        alert("Curso actualizado con éxito. (Los cambios ya están en vivo)");
+        alert("Curso actualizado con éxito.");
       } else {
         await addDoc(collection(db, "courses"), {
           ...courseForm,
           progress: 0,
-          studentsCount: 0
+          studentsCount: courseForm.enrolledStudents.length
         });
         alert("¡Curso creado y publicado en la plataforma INTECA!");
       }
@@ -119,7 +163,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   };
 
   const deleteCourse = async (courseId: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar este curso de toda la base de datos? Esto borrará módulos, lecciones y datos asociados.")) {
+    if (window.confirm("¿Estás seguro de que deseas eliminar este curso de toda la base de datos?")) {
       try {
         await deleteDoc(doc(db, "courses", courseId));
         alert("Curso eliminado definitivamente.");
@@ -153,7 +197,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
         setQuizQuestions(data.quizzes);
         setTimerCount(120);
         const interval = setInterval(() => {
-          setTimerCount((prev) => {
+          setTimerCount((prev: number) => {
             if (prev <= 1) {
               clearInterval(interval);
               setQuizFinished(true);
@@ -177,14 +221,14 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
     if (selectedAnswer !== null) return;
     setSelectedAnswer(optIndex);
     if (optIndex === quizQuestions[currentQuizIndex].correctAnswer) {
-      setQuizScore((prev) => prev + 1);
+      setQuizScore((prev: number) => prev + 1);
     }
   };
 
   const handleNextQuestion = () => {
     setSelectedAnswer(null);
     if (currentQuizIndex < quizQuestions.length - 1) {
-      setCurrentQuizIndex(prev => prev + 1);
+      setCurrentQuizIndex((prev: number) => prev + 1);
     } else {
       if (timerInterval) clearInterval(timerInterval);
       setQuizFinished(true);
@@ -220,122 +264,135 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   // ==========================================
   // RENDER 1: CATÁLOGO PRINCIPAL
   // ==========================================
-  const renderCatalog = () => (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Instituto Técnico del Caribe</span>
-          <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Cursos (LMS)</h1>
-        </div>
-        
-        {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
-          <button 
-            onClick={() => openStudio()}
-            className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Crear Nuevo Curso</span>
-          </button>
-        )}
-      </div>
+  const renderCatalog = () => {
+    // Filtrar cursos si el usuario es estudiante
+    const displayCourses = isAdmin ? courses : courses.filter((c: any) => c.enrolledStudents?.includes(currentUser.id));
 
-      {courses.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
-          <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-700">Catálogo Inicializado en 0</h3>
-          <p className="text-sm text-slate-500 mt-2">Utiliza el botón "Crear Nuevo Curso" para subir tu primer programa a la base de datos real.</p>
-        </div>
-      ) : (
-        <div id="course-list-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {courses.map((course) => (
-            <div 
-              key={course.id}
-              className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group relative cursor-pointer"
-              onClick={() => {
-                setSelectedCourse(course);
-                setExpandedModule(course.modules && course.modules.length > 0 ? course.modules[0].id : null);
-                setActiveSubTab('syllabus');
-                setViewMode('detail');
-              }}
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Instituto Técnico del Caribe</span>
+            <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Cursos (LMS)</h1>
+          </div>
+          
+          {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+            <button 
+              onClick={() => openStudio()}
+              className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
             >
-              {(currentUser.role === 'admin' || currentUser.name === course.teacher) && (
-                <button 
-                  onClick={(e) => { e.stopPropagation(); openStudio(course); }}
-                  className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 hover:bg-white transition-all"
-                  title="Editar Curso"
-                >
-                  <Edit3 className="w-4 h-4" />
-                </button>
-              )}
+              <Plus className="w-5 h-5" />
+              <span>Crear Nuevo Curso</span>
+            </button>
+          )}
+        </div>
 
-              <div className="relative h-48 bg-slate-900 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
-                <img 
-                  src={course.image || "https://images.unsplash.com/photo-1576091160550-2173ff9e5ee5?auto=format&fit=crop&q=80&w=800"} 
-                  alt={course.title} 
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                />
-                <div className="absolute top-4 left-4 z-10">
-                  <span className="text-[10px] bg-emerald-500 text-white font-mono font-bold uppercase px-3 py-1 rounded-full border border-emerald-500/40">
-                    {course.category || "General"}
-                  </span>
-                </div>
-                <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
-                  <span className="text-[10px] font-mono font-bold tracking-wider opacity-80">{course.code}</span>
-                  <h3 className="font-display font-bold text-lg mt-1 leading-snug">{course.title}</h3>
-                </div>
-              </div>
-
-              <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-                <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">{course.description}</p>
-                
-                {(course.duration || course.level) && (
-                  <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
-                    {course.duration && (
-                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                        <Clock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                        <span>Duración: <strong className="text-slate-700">{course.duration}</strong></span>
-                      </div>
-                    )}
-                    {course.level && (
-                      <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                        <Award className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                        <span>Nivel: <strong className="text-slate-700">{course.level}</strong></span>
-                      </div>
-                    )}
-                  </div>
+        {displayCourses.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
+            <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+            <h3 className="text-lg font-bold text-slate-700">No hay cursos disponibles</h3>
+            <p className="text-sm text-slate-500 mt-2">
+              {isAdmin ? "Utiliza el botón 'Crear Nuevo Curso' para subir tu primer programa." : "Contacta a la administración para que te matriculen en tus clases."}
+            </p>
+          </div>
+        ) : (
+          <div id="course-list-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {displayCourses.map((course: any) => (
+              <div 
+                key={course.id}
+                className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group relative cursor-pointer"
+                onClick={() => {
+                  setSelectedCourse(course);
+                  setExpandedModule(course.modules && course.modules.length > 0 ? course.modules[0].id : null);
+                  setActiveSubTab('syllabus');
+                  setViewMode('detail');
+                }}
+              >
+                {(currentUser.role === 'admin' || currentUser.name === course.teacher) && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); openStudio(course); }}
+                    className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 hover:bg-white transition-all"
+                    title="Editar Curso"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
                 )}
 
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs text-slate-500">
-                    <span>Progreso</span>
-                    <span className="font-bold text-slate-800">{course.progress || 0}%</span>
+                <div className="relative h-48 bg-slate-900 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
+                  <img 
+                    src={course.image || "https://images.unsplash.com/photo-1576091160550-2173ff9e5ee5?auto=format&fit=crop&q=80&w=800"} 
+                    alt={course.title} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                  />
+                  <div className="absolute top-4 left-4 z-10">
+                    <span className={`text-[9px] text-white font-mono font-bold uppercase px-3 py-1 rounded-full border ${
+                      course.format === 'scorm' ? 'bg-amber-500 border-amber-400' :
+                      course.format === 'lti' ? 'bg-purple-500 border-purple-400' :
+                      'bg-emerald-500 border-emerald-400'
+                    }`}>
+                      {course.format === 'scorm' ? 'SCORM' : course.format === 'lti' ? 'LTI 1.3' : (course.category || 'Nativo')}
+                    </span>
                   </div>
-                  <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full" style={{ width: `${course.progress || 0}%` }}></div>
+                  <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
+                    <span className="text-[10px] font-mono font-bold tracking-wider opacity-80">{course.code}</span>
+                    <h3 className="font-display font-bold text-lg mt-1 leading-snug">{course.title}</h3>
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-                  <span className="text-xs text-slate-400 font-medium">Titular: Prof. {course.teacher}</span>
-                  <button className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1">
-                    <span>Acceder</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                  <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">{course.description}</p>
+                  
+                  {(course.duration || course.level) && (
+                    <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
+                      {course.duration && (
+                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                          <Clock className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                          <span>Duración: <strong className="text-slate-700">{course.duration}</strong></span>
+                        </div>
+                      )}
+                      {course.level && (
+                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                          <Award className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                          <span>Nivel: <strong className="text-slate-700">{course.level}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-slate-500">
+                      <span>Progreso</span>
+                      <span className="font-bold text-slate-800">{course.progress || 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-emerald-500 h-full" style={{ width: `${course.progress || 0}%` }}></div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                    <span className="text-xs text-slate-400 font-medium">Titular: Prof. {course.teacher}</span>
+                    <button className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-1">
+                      <span>Acceder</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // ==========================================
-  // RENDER 2: DETALLE DEL CURSO (DATOS REALES)
+  // RENDER 2: DETALLE DEL CURSO
   // ==========================================
   const renderCourseDetail = () => {
     if (!selectedCourse) return null;
+    const typedCourse = selectedCourse as any;
+
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
@@ -352,8 +409,8 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
           </button>
 
           <div className="flex items-center gap-3">
-            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold border border-emerald-100">{selectedCourse.code}</span>
-            <h2 className="font-display font-bold text-slate-900 text-base md:text-lg">{selectedCourse.title}</h2>
+            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold border border-emerald-100">{typedCourse.code}</span>
+            <h2 className="font-display font-bold text-slate-900 text-base md:text-lg">{typedCourse.title}</h2>
           </div>
         </div>
 
@@ -377,14 +434,14 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
           {/* PESTAÑA: SYLLABUS REAL */}
           {activeSubTab === 'syllabus' && (
             <div className="space-y-4">
-              {(!selectedCourse.modules || selectedCourse.modules.length === 0) ? (
+              {(!typedCourse.modules || typedCourse.modules.length === 0) ? (
                 <div className="p-8 text-center bg-white rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center">
                   <BookOpen className="w-10 h-10 text-slate-300 mb-3" />
                   <p className="text-slate-500 text-sm font-bold">Este programa está en construcción.</p>
-                  <p className="text-xs text-slate-400 mt-1">El profesor {selectedCourse.teacher} aún no ha publicado los módulos.</p>
+                  <p className="text-xs text-slate-400 mt-1">El profesor {typedCourse.teacher} aún no ha publicado los módulos.</p>
                 </div>
               ) : (
-                selectedCourse.modules.map((mod) => {
+                typedCourse.modules.map((mod: any) => {
                   const isExpanded = expandedModule === mod.id;
                   return (
                     <div key={mod.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
@@ -408,11 +465,12 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                           {mod.lessons.length === 0 ? (
                             <p className="text-xs text-slate-400 italic text-center py-3">No hay contenido publicado en este módulo aún.</p>
                           ) : (
-                            mod.lessons.map((lesson) => {
+                            mod.lessons.map((lesson: any) => {
                               const getIcon = () => {
                                 switch (lesson.type) {
                                   case 'video': return Video;
                                   case 'pdf': return FileText;
+                                  case 'task': return FileText;
                                   case 'quiz': return HelpCircle;
                                   default: return BookOpen;
                                 }
@@ -457,6 +515,22 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                               );
                             })
                           )}
+                          
+                          {/* Examen final del módulo si existe */}
+                          {mod.hasFinalExam && (
+                            <div className="mt-4 p-4 border border-emerald-200 bg-emerald-50/50 rounded-xl flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg"><Award className="w-5 h-5"/></div>
+                                <div>
+                                  <p className="font-bold text-emerald-800 text-sm">Examen Final: {mod.title}</p>
+                                  <p className="text-[10px] text-emerald-600">Requisito obligatorio para avanzar.</p>
+                                </div>
+                              </div>
+                              <button onClick={() => startQuizFlow(`Evaluación del módulo ${mod.title}`)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors">
+                                Iniciar Evaluación
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -466,14 +540,14 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
             </div>
           )}
 
-          {/* PESTAÑA: QUIZZES IA (CON DATOS REALES DEL CURSO) */}
+          {/* PESTAÑA: QUIZZES IA */}
           {activeSubTab === 'quizzes' && (
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
               <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
                 <Sparkles className="w-5 h-5 text-emerald-500" />
                 <div>
                   <h3 className="font-bold text-slate-900">Motor de Exámenes Adaptativos INTECA</h3>
-                  <p className="text-xs text-slate-500">Evaluaciones generadas dinámicamente con Inteligencia Artificial sobre los temas de <strong>{selectedCourse.title}</strong>.</p>
+                  <p className="text-xs text-slate-500">Evaluaciones generadas dinámicamente con Inteligencia Artificial sobre los temas de <strong>{typedCourse.title}</strong>.</p>
                 </div>
               </div>
 
@@ -485,11 +559,11 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                     <p className="text-xs text-slate-500 mt-1">Mide tu conocimiento general sobre todos los conceptos clave impartidos en este programa.</p>
                   </div>
                   <button 
-                    onClick={() => startQuizFlow(`Conceptos principales y evaluación técnica de ${selectedCourse.title}`)}
+                    onClick={() => startQuizFlow(`Conceptos principales y evaluación técnica de ${typedCourse.title}`)}
                     className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Examen: {selectedCourse.title}</span>
+                    <span>Examen: {typedCourse.title}</span>
                   </button>
                 </div>
 
@@ -497,33 +571,33 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                   <div>
                     <span className="text-[10px] bg-sky-500/10 text-sky-600 px-2 py-0.5 rounded font-bold font-mono">SIMULADOR PRÁCTICO</span>
                     <h4 className="font-bold text-slate-900 text-sm mt-2">Prueba de Casos Aplicados</h4>
-                    <p className="text-xs text-slate-500 mt-1">Análisis de escenarios reales para profesionales en el área de {selectedCourse.category || "Salud"}.</p>
+                    <p className="text-xs text-slate-500 mt-1">Análisis de escenarios reales para profesionales en el área de {typedCourse.category || "Salud"}.</p>
                   </div>
                   <button 
-                    onClick={() => startQuizFlow(`Resolución de problemas y casos prácticos en el área de ${selectedCourse.category || "la materia abordada"}`)}
+                    onClick={() => startQuizFlow(`Resolución de problemas y casos prácticos en el área de ${typedCourse.category || "la materia abordada"}`)}
                     className="w-full bg-slate-900 hover:bg-black text-white text-xs font-bold py-2.5 rounded-xl transition-colors mt-4 flex items-center justify-center gap-1.5"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-                    <span>Simulador: {selectedCourse.category || "Casos"}</span>
+                    <span>Simulador: {typedCourse.category || "Casos"}</span>
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* PESTAÑA: BUZÓN DE TAREAS (CON TÍTULOS REALES) */}
+          {/* PESTAÑA: BUZÓN DE TAREAS */}
           {activeSubTab === 'homework' && (
              <div id="homework-portal" className="space-y-6">
              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
                <div className="space-y-1">
                  <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">BUZÓN ACADÉMICO</span>
-                 <h3 className="font-bold text-slate-950 font-display text-base mt-1">Proyecto Final: {selectedCourse.title}</h3>
-                 <p className="text-xs text-slate-500">Evaluación Asistida por el Titular Prof. {selectedCourse.teacher} y motor IA.</p>
+                 <h3 className="font-bold text-slate-950 font-display text-base mt-1">Proyecto Final: {typedCourse.title}</h3>
+                 <p className="text-xs text-slate-500">Evaluación Asistida por el Titular Prof. {typedCourse.teacher} y motor IA.</p>
                </div>
      
                <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl space-y-2 text-xs">
                  <p className="font-bold">Mandato Oficial:</p>
-                 <p className="leading-relaxed">Basado en las competencias desarrolladas durante el programa académico de <strong>{selectedCourse.title}</strong>, redacte un análisis exhaustivo explicando cómo aplicaría usted los conocimientos de nivel {selectedCourse.level} en su entorno profesional diario.</p>
+                 <p className="leading-relaxed">Basado en las competencias desarrolladas durante el programa académico de <strong>{typedCourse.title}</strong>, redacte un análisis exhaustivo explicando cómo aplicaría usted los conocimientos de nivel {typedCourse.level} en su entorno profesional diario.</p>
                </div>
      
                {currentUser.role === 'student' && !homeworkGradedResult && (
@@ -542,7 +616,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                    <div className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
                      <span className="text-[10px] text-slate-400">INTECA Intellect auditará originalidad y coherencia técnica de inmediato.</span>
                      <button
-                       onClick={() => submitHomework(`Proyecto de ${selectedCourse.title}`)}
+                       onClick={() => submitHomework(`Proyecto de ${typedCourse.title}`)}
                        disabled={submittingHomework}
                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
                      >
@@ -640,19 +714,19 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
            </div>
           )}
 
-          {/* PESTAÑA: INTEGRACIÓN LTI (CON ID REAL) */}
+          {/* PESTAÑA: INTEGRACIÓN LTI */}
           {activeSubTab === 'lti' && (
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
               <div className="border-b border-slate-100 pb-3">
                 <h3 className="font-bold text-slate-900">Interoperabilidad LTI (Learning Tools Interoperability)</h3>
-                <p className="text-xs text-slate-500">Este curso ({selectedCourse.title}) está listo para federarse con plataformas secundarias.</p>
+                <p className="text-xs text-slate-500">Este curso ({typedCourse.title}) está listo para federarse con plataformas secundarias.</p>
               </div>
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-3 leading-relaxed">
                 <p>Las siguientes llaves criptográficas son únicas y exclusivas de este programa académico. Cópielas para incrustar el contenido en Moodle, Canvas o Blackboard:</p>
                 <div className="bg-slate-950 text-emerald-400 p-4 rounded-xl font-mono text-xs space-y-2 shadow-inner">
-                  <p><span className="text-slate-400">LTI_CONSUMER_KEY:</span> inteca_hub_{selectedCourse.id.substring(0,8)}</p>
-                  <p><span className="text-slate-400">LTI_SHARED_SECRET:</span> sec_{selectedCourse.id}84e</p>
-                  <p><span className="text-slate-400">LAUNCH_URL:</span> {`https://lms.inteca.edu.co/api/lti/launch/${selectedCourse.id}`}</p>
+                  <p><span className="text-slate-400">LTI_CONSUMER_KEY:</span> inteca_hub_{typedCourse.id.substring(0,8)}</p>
+                  <p><span className="text-slate-400">LTI_SHARED_SECRET:</span> sec_{typedCourse.id}84e</p>
+                  <p><span className="text-slate-400">LAUNCH_URL:</span> {`https://lms.inteca.edu.co/api/lti/launch/${typedCourse.id}`}</p>
                 </div>
                 <p className="text-[10px] text-slate-400 italic">El acceso mediante LTI reportará las calificaciones directamente a su plataforma original.</p>
               </div>
@@ -665,13 +739,16 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   };
 
   // ==========================================
-  // RENDER 3: STUDIO CREADOR DE CURSOS
+  // RENDER 3: LMS AUTHORING TOOL (STUDIO)
   // ==========================================
   const renderStudio = () => (
     <div className="space-y-6 animate-in fade-in duration-500 pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between bg-slate-900 p-6 rounded-3xl text-white shadow-xl gap-4">
         <div>
-          <span className="text-emerald-400 text-[10px] font-mono font-bold uppercase tracking-wider">Modo Arquitecto de Cursos</span>
+          <span className="text-emerald-400 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-2">
+            Modo Arquitecto de Cursos
+            {isMaster && <span className="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[9px] tracking-widest shadow-sm">MASTER ADMIN</span>}
+          </span>
           <h2 className="text-2xl font-bold font-display mt-1">{courseForm.id ? "Editar Programa Académico" : "Construir Nuevo Programa"}</h2>
         </div>
         <div className="flex gap-3">
@@ -689,7 +766,8 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLUMNA IZQUIERDA: Info General */}
+        
+        {/* COLUMNA IZQUIERDA: Info General y Formatos */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
             <h3 className="font-bold text-slate-800 border-b border-slate-100 pb-2">Información Principal</h3>
@@ -698,6 +776,40 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Título del Curso</label>
                 <input type="text" value={courseForm.title} onChange={e => setCourseForm({...courseForm, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="Ej. Atención al Usuario" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Formato de Contenido</label>
+                <select 
+                  value={courseForm.format}
+                  onChange={(e) => setCourseForm({...courseForm, format: e.target.value})}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold focus:bg-white focus:ring-1 focus:ring-sky-500 outline-none cursor-pointer text-slate-700"
+                >
+                  <option value="native">LMS Nativo (Constructor INTECA)</option>
+                  <option value="scorm">Paquete SCORM (1.2 / 2004)</option>
+                  <option value="lti">Integración LTI (1.3)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Profesor / Titular</label>
+                <select 
+                  value={courseForm.teacherId || courseForm.teacher}
+                  onChange={(e) => {
+                    const selectedTeacher = teachers.find(t => t.id === e.target.value);
+                    setCourseForm({
+                      ...courseForm, 
+                      teacherId: selectedTeacher?.id || "", 
+                      teacher: selectedTeacher?.name || ""
+                    });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer text-slate-700"
+                >
+                  <option value="">-- Asignar Docente --</option>
+                  {teachers.map(t => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.email})</option>
+                  ))}
+                </select>
               </div>
               
               <div className="flex gap-3">
@@ -712,20 +824,15 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Profesor Asignado</label>
-                <input type="text" value={courseForm.teacher} onChange={e => setCourseForm({...courseForm, teacher: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" />
-              </div>
-
-              <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Descripción Detallada</label>
-                <textarea rows={4} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors leading-relaxed" placeholder="¿Qué aprenderá el estudiante en este curso?" />
+                <textarea rows={3} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors leading-relaxed" placeholder="¿Qué aprenderá el estudiante en este curso?" />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 flex items-center gap-1.5"><Image className="w-3.5 h-3.5"/> URL de Portada (Imagen)</label>
                 <input type="text" value={courseForm.image} onChange={e => setCourseForm({...courseForm, image: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:bg-white focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" placeholder="Pega el enlace web de la foto..." />
                 {courseForm.image && (
-                  <div className="mt-3 relative rounded-xl overflow-hidden border border-slate-200 h-32">
+                  <div className="mt-3 relative rounded-xl overflow-hidden border border-slate-200 h-24">
                     <img src={courseForm.image} alt="Preview" className="w-full h-full object-cover" />
                   </div>
                 )}
@@ -740,125 +847,177 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: Módulos y Lecciones */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-            <div>
-              <h3 className="font-bold text-slate-800">Estructura Académica (Módulos)</h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Añade los temas y sube tus enlaces de video, PDF o exámenes.</p>
-            </div>
-            <button onClick={handleAddModule} className="bg-sky-50 text-sky-600 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:bg-sky-100 transition-colors border border-sky-100">
-              <Plus className="w-4 h-4" /> Agregar Módulo
-            </button>
-          </div>
-
-          {(courseForm.modules || []).map((mod, mIndex) => (
-            <div key={mod.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="bg-slate-50 p-5 border-b border-slate-200 flex flex-col md:flex-row gap-4 items-center">
-                <div className="flex-1 w-full">
-                  <input 
-                    type="text" 
-                    value={mod.title} 
-                    onChange={(e) => {
-                      const newMods = [...(courseForm.modules || [])];
-                      newMods[mIndex].title = e.target.value;
-                      setCourseForm({...courseForm, modules: newMods});
-                    }} 
-                    className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-full pb-1.5 transition-colors" 
-                    placeholder="Escribe el Título del Módulo aquí..." 
-                  />
+        {/* COLUMNA DERECHA 1: Constructor de Módulos (O SCORM Upload) */}
+        <div className="lg:col-span-1 space-y-6">
+          {courseForm.format !== 'native' ? (
+             <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm text-center border-dashed border-2 border-sky-100 h-full flex flex-col justify-center">
+               <FolderArchive className="w-16 h-16 text-sky-400 mx-auto mb-4" />
+               <h3 className="text-lg font-bold text-slate-800">Motor de Importación {courseForm.format.toUpperCase()}</h3>
+               <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">
+                 Sube tu archivo .ZIP estructurado. El sistema desempaquetará automáticamente los módulos, recursos y evaluaciones hacia la nube de INTECA.
+               </p>
+               <button className="mt-6 bg-sky-50 text-sky-600 border border-sky-200 hover:bg-sky-100 font-bold py-3 px-6 rounded-xl text-xs transition-colors flex items-center justify-center gap-2 mx-auto w-full">
+                 <UploadCloud className="w-4 h-4" />
+                 Seleccionar Paquete ZIP
+               </button>
+             </div>
+          ) : (
+            <>
+              <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                <div>
+                  <h3 className="font-bold text-slate-800">Malla Curricular</h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Estructura módulos y recursos.</p>
                 </div>
-                <button onClick={() => handleAddLesson(mod.id)} className="text-xs bg-emerald-50 border border-emerald-100 text-emerald-600 px-4 py-2 rounded-xl font-bold hover:bg-emerald-100 transition-colors flex items-center gap-1.5 w-full md:w-auto justify-center">
-                  <Plus className="w-4 h-4"/> Añadir Recurso
+                <button onClick={handleAddModule} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 hover:bg-emerald-100 transition-colors border border-emerald-100">
+                  <Plus className="w-3.5 h-3.5" /> Módulo
                 </button>
               </div>
 
-              <div className="p-5 space-y-3">
-                {mod.lessons.length === 0 ? (
-                  <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-2xl">
-                    <BookOpen className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400 font-medium">Este módulo está vacío. Añade una lección para comenzar.</p>
-                  </div>
-                ) : (
-                  mod.lessons.map((lesson, lIndex) => (
-                    <div key={lesson.id} className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl relative group">
-                      
-                      <button 
-                        onClick={() => {
+              {(courseForm.modules || []).length === 0 ? (
+                <div className="text-center py-10 bg-white rounded-2xl border border-slate-200 border-dashed">
+                  <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-xs text-slate-400 font-medium">No hay módulos definidos.</p>
+                </div>
+              ) : (
+                (courseForm.modules || []).map((mod: any, mIndex: number) => (
+                  <div key={mod.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col gap-3">
+                      <input 
+                        type="text" 
+                        value={mod.title} 
+                        onChange={(e) => {
                           const newMods = [...(courseForm.modules || [])];
-                          newMods[mIndex].lessons.splice(lIndex, 1);
+                          newMods[mIndex].title = e.target.value;
                           setCourseForm({...courseForm, modules: newMods});
-                        }}
-                        className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors"
-                        title="Eliminar Lección"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-
-                      <div className="flex flex-col md:flex-row items-start md:items-center gap-4 pr-6">
-                        <select 
-                          value={lesson.type} 
-                          onChange={(e) => {
-                            const newMods = [...(courseForm.modules || [])];
-                            newMods[mIndex].lessons[lIndex].type = e.target.value as any;
-                            setCourseForm({...courseForm, modules: newMods});
-                          }} 
-                          className="bg-white border border-slate-300 text-xs rounded-xl p-2 outline-none font-bold text-slate-700 shadow-sm"
-                        >
-                          <option value="video">🎥 Video (URL)</option>
-                          <option value="pdf">📄 Archivo (PDF/Doc)</option>
-                          <option value="quiz">🧠 Examen de Inteligencia Artificial</option>
-                        </select>
-                        
-                        <input 
-                          type="text" 
-                          value={lesson.title} 
-                          onChange={(e) => {
-                            const newMods = [...(courseForm.modules || [])];
-                            newMods[mIndex].lessons[lIndex].title = e.target.value;
-                            setCourseForm({...courseForm, modules: newMods});
-                          }} 
-                          className="flex-1 w-full bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-sm font-semibold pb-1.5 transition-colors" 
-                          placeholder="Nombre del contenido (Ej. Introducción a la Anatomía)" 
-                        />
-                        
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <input 
-                            type="text" 
-                            value={lesson.duration} 
-                            onChange={(e) => {
-                              const newMods = [...(courseForm.modules || [])];
-                              newMods[mIndex].lessons[lIndex].duration = e.target.value;
-                              setCourseForm({...courseForm, modules: newMods});
-                            }} 
-                            className="w-20 bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs pb-1.5 text-center font-medium transition-colors" 
-                            placeholder="Ej. 15 min" 
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-3 mt-1 bg-white p-2 rounded-xl border border-slate-100">
-                        <div className="p-1.5 bg-slate-100 rounded-lg"><LinkIcon className="w-3.5 h-3.5 text-slate-500" /></div>
-                        <input 
-                          type="text" 
-                          value={lesson.contentUrl || ""} 
-                          onChange={(e) => {
-                            const newMods = [...(courseForm.modules || [])];
-                            newMods[mIndex].lessons[lIndex].contentUrl = e.target.value;
-                            setCourseForm({...courseForm, modules: newMods});
-                          }} 
-                          className="flex-1 bg-transparent border-none outline-none text-xs text-slate-600" 
-                          placeholder="Pega aquí el enlace de YouTube, Vimeo o Google Drive para este contenido..." 
-                        />
+                        }} 
+                        className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-full pb-1.5 transition-colors" 
+                        placeholder="Título del Módulo..." 
+                      />
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => handleAddLesson(mod.id, 'video')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded-lg font-bold hover:text-sky-600 transition-colors flex items-center gap-1 flex-1 justify-center"><Video className="w-3 h-3"/> Video</button>
+                        <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded-lg font-bold hover:text-amber-600 transition-colors flex items-center gap-1 flex-1 justify-center"><FileText className="w-3 h-3"/> Tarea</button>
+                        <button onClick={() => handleAddLesson(mod.id, 'quiz')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded-lg font-bold hover:text-rose-600 transition-colors flex items-center gap-1 flex-1 justify-center"><CheckSquare className="w-3 h-3"/> Quiz IA</button>
                       </div>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
-          ))}
+
+                    <div className="p-4 space-y-3">
+                      {mod.lessons.length === 0 ? (
+                        <p className="text-[10px] text-center text-slate-400 italic">Módulo vacío</p>
+                      ) : (
+                        mod.lessons.map((lesson: any, lIndex: number) => (
+                          <div key={lesson.id} className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl relative group">
+                            <button 
+                              onClick={() => {
+                                const newMods = [...(courseForm.modules || [])];
+                                newMods[mIndex].lessons.splice(lIndex, 1);
+                                setCourseForm({...courseForm, modules: newMods});
+                              }}
+                              className="absolute top-3 right-3 text-slate-400 hover:text-rose-500 transition-colors"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+
+                            <div className="flex items-center gap-2 pr-6">
+                              {lesson.type === 'video' ? <Video className="w-3.5 h-3.5 text-sky-500 shrink-0"/> : 
+                               lesson.type === 'task' ? <FileText className="w-3.5 h-3.5 text-amber-500 shrink-0"/> : 
+                               <HelpCircle className="w-3.5 h-3.5 text-rose-500 shrink-0"/>}
+                              <input 
+                                type="text" 
+                                value={lesson.title} 
+                                onChange={(e) => {
+                                  const newMods = [...(courseForm.modules || [])];
+                                  newMods[mIndex].lessons[lIndex].title = e.target.value;
+                                  setCourseForm({...courseForm, modules: newMods});
+                                }} 
+                                className="flex-1 bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs font-bold pb-1 transition-colors w-full" 
+                                placeholder="Nombre de la lección..." 
+                              />
+                            </div>
+                            
+                            {lesson.type !== 'quiz' && (
+                              <div className="flex items-center gap-2 mt-1">
+                                <LinkIcon className="w-3 h-3 text-slate-400 shrink-0" />
+                                <input 
+                                  type="text" 
+                                  value={lesson.contentUrl || ""} 
+                                  onChange={(e) => {
+                                    const newMods = [...(courseForm.modules || [])];
+                                    newMods[mIndex].lessons[lIndex].contentUrl = e.target.value;
+                                    setCourseForm({...courseForm, modules: newMods});
+                                  }} 
+                                  className="flex-1 bg-transparent border-none outline-none text-[10px] text-slate-500 w-full" 
+                                  placeholder="URL del enlace..." 
+                                />
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+
+                      <label className="flex items-center justify-center gap-2 mt-4 cursor-pointer bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 hover:bg-emerald-100 transition-colors">
+                        <input 
+                          type="checkbox" 
+                          checked={mod.hasFinalExam}
+                          onChange={() => {
+                            const newMods = [...(courseForm.modules || [])];
+                            newMods[mIndex].hasFinalExam = !mod.hasFinalExam;
+                            setCourseForm({...courseForm, modules: newMods});
+                          }}
+                          className="rounded text-emerald-500 focus:ring-0 w-3.5 h-3.5"
+                        />
+                        <Award className={`w-3.5 h-3.5 ${mod.hasFinalExam ? 'text-emerald-500' : 'text-emerald-300'}`} />
+                        <span className="text-[10px] font-bold text-emerald-800 uppercase">Incluir Examen Final de Módulo</span>
+                      </label>
+                    </div>
+                  </div>
+                ))
+              )}
+            </>
+          )}
         </div>
+
+        {/* COLUMNA DERECHA 2: Matriculación Estudiantil */}
+        <div className="lg:col-span-1 space-y-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-full max-h-[600px]">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-4 shrink-0">
+              <Users className="w-5 h-5 text-sky-500" />
+              <h2 className="font-bold text-slate-900 text-sm">Matriculación Estudiantil</h2>
+            </div>
+            
+            <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider flex justify-between py-3 shrink-0">
+              <span>Directorio de Alumnos</span>
+              <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">{(courseForm.enrolledStudents || []).length} Inscritos</span>
+            </div>
+
+            <div className="overflow-y-auto space-y-2 pr-1 custom-scrollbar flex-1">
+              {students.map(student => {
+                const isEnrolled = (courseForm.enrolledStudents || []).includes(student.id);
+                return (
+                  <div 
+                    key={student.id} 
+                    onClick={() => toggleStudentEnrollment(student.id)}
+                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
+                      isEnrolled ? 'bg-sky-50 border-sky-200' : 'bg-white border-slate-100 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <img src={student.avatar} alt="" className="w-7 h-7 rounded-full bg-slate-200" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 leading-none">{student.name}</p>
+                        <p className="text-[9px] text-slate-400 mt-0.5">{student.academicId || student.email}</p>
+                      </div>
+                    </div>
+                    {isEnrolled && <UserCheck className="w-4 h-4 text-sky-600" />}
+                  </div>
+                );
+              })}
+              {students.length === 0 && (
+                <p className="text-xs text-center text-slate-400 py-10">No hay estudiantes registrados en la base de datos.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   );

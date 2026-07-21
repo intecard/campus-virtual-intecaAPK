@@ -68,7 +68,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
 
-  // Stats Counters
+  // Stats Counters (Inician estrictamente en 0)
   const [stats, setStats] = useState({
     totalUsers: 0,
     students: 0,
@@ -104,10 +104,11 @@ export default function AdminView({ currentUser }: AdminViewProps) {
           academicId: u.academicId || "INTECA-2026-REG",
           joinedDate: u.joinedDate || "Jul 2026",
           suspended: u.suspended || false,
-          avatar: u.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(u.name || 'user')}`
+          avatar: u.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name || 'user')}`
         };
         fetchedUsers.push(userData);
 
+        // Conteo Matemático Estricto de Datos Reales
         if (userData.suspended) suspended++;
         if (userData.role === 'student') students++;
         else if (userData.role === 'teacher') teachers++;
@@ -171,6 +172,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       setActivityData(finalGraphData);
       setLoadingLogs(false);
 
+      // 3. Fetch System Settings
       const configDocRef = doc(db, "system_config", "global");
       const configSnap = await getDoc(configDocRef);
       if (configSnap.exists()) {
@@ -195,19 +197,23 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       const userDocRef = doc(db, "users", userId);
       await updateDoc(userDocRef, { role: newRole });
       
-      await logUserActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.email,
-        currentUser.role,
-        "ROLE_CHANGE",
-        `Se modificó el rol de "${targetName}" (ID: ${userId}) a "${newRole}"`
-      );
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.email,
+          currentUser.role,
+          "ROLE_CHANGE",
+          `Se modificó el rol de "${targetName}" (ID: ${userId}) a "${newRole}"`
+        );
+      }
 
-      await addNotificationToUser(userId, `Tu rol académico de INTECA ha sido actualizado a: ${newRole.toUpperCase()}`);
+      if (typeof addNotificationToUser === 'function') {
+        await addNotificationToUser(userId, `Tu rol académico de INTECA ha sido actualizado a: ${newRole.toUpperCase()}`);
+      }
 
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      fetchData();
+      fetchData(); // Sincroniza métricas
     } catch (err) {
       console.error("Error updating role:", err);
       alert("No se pudo actualizar el rol. Verifique los permisos.");
@@ -220,17 +226,19 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       const newSuspended = !currentSuspended;
       await updateDoc(userDocRef, { suspended: newSuspended });
       
-      await logUserActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.email,
-        currentUser.role,
-        newSuspended ? "USER_SUSPEND" : "USER_ACTIVATE",
-        `Se ${newSuspended ? 'suspendió' : 'activó'} la cuenta de "${targetName}" (ID: ${userId})`
-      );
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.email,
+          currentUser.role,
+          newSuspended ? "USER_SUSPEND" : "USER_ACTIVATE",
+          `Se ${newSuspended ? 'suspendió' : 'activó'} la cuenta de "${targetName}" (ID: ${userId})`
+        );
+      }
 
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, suspended: newSuspended } : u));
-      fetchData();
+      fetchData(); // Sincroniza métricas
     } catch (err) {
       console.error("Error toggling suspension:", err);
       alert("Error al modificar el estado de la cuenta.");
@@ -249,14 +257,16 @@ export default function AdminView({ currentUser }: AdminViewProps) {
         updatedBy: currentUser.name
       });
 
-      await logUserActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.email,
-        currentUser.role,
-        "CONFIG_UPDATE",
-        `Configuración global actualizada: Registro=${publicRegEnabled}, TutorIA=${aiTutorEnabled}, 2FAExigido=${strict2FA}`
-      );
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.email,
+          currentUser.role,
+          "CONFIG_UPDATE",
+          `Configuración global actualizada: Registro=${publicRegEnabled}, TutorIA=${aiTutorEnabled}, 2FAExigido=${strict2FA}`
+        );
+      }
 
       alert("Configuración del sistema guardada con éxito.");
       fetchData();
@@ -275,16 +285,20 @@ export default function AdminView({ currentUser }: AdminViewProps) {
     setBroadcastSending(true);
     setBroadcastSuccess(false);
     try {
-      await addNotificationToUser("all", `[ANUNCIO GENERAL]: ${broadcastText}`);
+      if (typeof addNotificationToUser === 'function') {
+        await addNotificationToUser("all", `[ANUNCIO GENERAL]: ${broadcastText}`);
+      }
       
-      await logUserActivity(
-        currentUser.id,
-        currentUser.name,
-        currentUser.email,
-        currentUser.role,
-        "BROADCAST",
-        `Anuncio global emitido: "${broadcastText.substring(0, 60)}..."`
-      );
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity(
+          currentUser.id,
+          currentUser.name,
+          currentUser.email,
+          currentUser.role,
+          "BROADCAST",
+          `Anuncio global emitido: "${broadcastText.substring(0, 60)}..."`
+        );
+      }
 
       setBroadcastText("");
       setBroadcastSuccess(true);
@@ -497,7 +511,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   }
 
   return (
-    <div id="admin-view-root" className="space-y-6 animate-in fade-in duration-500">
+    <div id="admin-view-root" className="space-y-6 animate-in fade-in duration-500 pb-10">
       
       {/* HEADER PRINCIPAL Y ETIQUETA MASTER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -512,7 +526,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
           onClick={fetchData}
           className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white text-xs font-bold py-2.5 px-4 rounded-xl transition-all shadow-md shrink-0"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loadingUsers || loadingLogs ? 'animate-spin' : ''}`} />
           <span>Sincronizar Firestore</span>
         </button>
       </div>
