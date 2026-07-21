@@ -1,22 +1,20 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { 
   BookOpen, 
-  Calendar, 
   Clock, 
-  Bell, 
   GraduationCap, 
   Award, 
   Sparkles, 
   TrendingUp, 
   ShieldCheck, 
-  CheckCircle2, 
   FileText, 
-  MessageSquare, 
   Users, 
   Video,
   Building
 } from "lucide-react";
 import { UserProfile, Course, LiveClass } from "../types";
+import { db } from "../firebase";
+import { doc, onSnapshot } from "firebase/firestore";
 
 interface DashboardViewProps {
   currentUser: UserProfile;
@@ -32,17 +30,38 @@ export default function DashboardView({
   setActiveTab
 }: DashboardViewProps) {
   
-  const caribbeanTime = new Date().toLocaleTimeString("es-CO", { 
+  // Estados para el Reloj Global en Tiempo Real
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [platformTimezone, setPlatformTimezone] = useState("America/Santo_Domingo");
+
+  // Efecto para escuchar cambios en la configuración global (Zona Horaria)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "settings", "platform"), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().timezone) {
+        setPlatformTimezone(docSnap.data().timezone);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  // Efecto para hacer que el reloj avance cada segundo
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const localizedTime = currentTime.toLocaleTimeString("es-DO", { 
     hour: '2-digit', 
     minute: '2-digit',
-    timeZone: 'America/Bogota' 
+    timeZone: platformTimezone 
   });
 
-  const caribbeanDate = new Date().toLocaleDateString("es-CO", {
+  const localizedDate = currentTime.toLocaleDateString("es-DO", {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
+    day: 'numeric',
+    timeZone: platformTimezone
   });
 
   const activeClass = liveClasses?.find((c: LiveClass) => c.isLive);
@@ -51,8 +70,6 @@ export default function DashboardView({
   // CÁLCULOS DINÁMICOS REALES (Conectados a BD)
   // ==========================================
 
-  // 1. Datos del Estudiante (FILTRADO REAL)
-  // Solo muestra los cursos donde el correo del estudiante esté en la lista de matriculados
   const studentCourses = courses?.filter((c: any) => 
     c.students?.includes(currentUser.email) || c.enrolledStudents?.includes(currentUser.email)
   ) || []; 
@@ -61,24 +78,20 @@ export default function DashboardView({
     ? Math.round(studentCourses.reduce((acc: number, c: any) => acc + (c.progress || 0), 0) / studentCourses.length) 
     : 0;
   
-  // Variables de Firebase
   const studentAttendance = 0; 
   const studentCredits = 0;
   const studentAiEvals = 0;
   const pendingTasks: any[] = []; 
 
-  // 2. Datos del Profesor
   const teacherCourses = courses?.filter((c: Course) => c.teacher === currentUser.name) || [];
   const totalStudentsInCharge = teacherCourses.reduce((acc: number, c: any) => acc + (c.studentsCount || 0), 0);
   const teacherAverageAttendance = 0; 
-
 
   // ==========================================
   // 1. PANEL DE ESTUDIANTE
   // ==========================================
   const renderStudentDashboard = () => (
     <div id="student-dashboard-layout" className="space-y-6 animate-in fade-in duration-500">
-      
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-3xl p-6 md:p-8 text-white relative overflow-hidden shadow-xl border border-slate-800">
         <div className="absolute right-0 bottom-0 opacity-5 transform translate-x-16 translate-y-16 pointer-events-none">
           <GraduationCap className="w-80 h-80" />
@@ -100,9 +113,9 @@ export default function DashboardView({
           <div className="flex items-center gap-4 bg-white/5 p-4 rounded-2xl border border-white/10 backdrop-blur-md min-w-[220px]">
             <Clock className="w-8 h-8 text-emerald-400 shrink-0" />
             <div>
-              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Zona Horaria Caribe</p>
-              <p className="text-xl font-bold font-mono text-white tracking-tight">{caribbeanTime}</p>
-              <p className="text-[10px] text-slate-400 capitalize font-medium">{caribbeanDate}</p>
+              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">ZONA HORARIA DEL CAMPUS</p>
+              <p className="text-xl font-bold font-mono text-white tracking-tight">{localizedTime}</p>
+              <p className="text-[10px] text-slate-400 capitalize font-medium">{localizedDate}</p>
             </div>
           </div>
         </div>
@@ -443,12 +456,20 @@ export default function DashboardView({
           Para realizar operaciones críticas como matriculación de estudiantes, auditoría del registro de actividades o cambios en las políticas de seguridad de la red INTECA.
         </p>
       </div>
-      <button 
-        onClick={() => setActiveTab('admin')}
-        className="bg-slate-900 hover:bg-black text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-md font-mono"
-      >
-        Abrir Consola de Gestión de Roles
-      </button>
+      <div className="flex flex-col sm:flex-row gap-4 justify-center mt-4">
+        <button 
+          onClick={() => setActiveTab('admin')}
+          className="bg-slate-900 hover:bg-black text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-md font-mono"
+        >
+          Abrir Consola de Roles
+        </button>
+        <button 
+          onClick={() => setActiveTab('settings')}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-3 px-6 rounded-xl transition-all shadow-md font-mono"
+        >
+          Ajustes del Sistema
+        </button>
+      </div>
     </div>
   );
 

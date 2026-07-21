@@ -11,12 +11,14 @@ import {
   X,
   Trash2,
   Loader2,
-  Link as LinkIcon
+  Download,
+  FileUp
 } from "lucide-react";
-import { db } from "../firebase";
+import { db, storage } from "../firebase";
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 
-// Definición local extendida para soportar URLs reales
+// Definición local extendida para soportar URLs reales y rutas de borrado
 export interface RealCloudFile {
   id: string;
   name: string;
@@ -26,6 +28,7 @@ export interface RealCloudFile {
   modifiedAt: string;
   version: number;
   url?: string;
+  storagePath?: string; // Necesario para poder borrar el archivo físico después
 }
 
 export default function FilesView() {
@@ -39,7 +42,7 @@ export default function FilesView() {
   // Estados del Modal de Subida
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [newFile, setNewFile] = useState({ name: '', url: '', source: 'INTECA Cloud' });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // 1. CARGAR ARCHIVOS EN TIEMPO REAL DESDE FIREBASE
   useEffect(() => {
@@ -58,48 +61,74 @@ export default function FilesView() {
 
   const filteredFiles = activeDrive === 'All' ? files : files.filter(f => f.source === activeDrive);
 
-  // 2. SUBIR NUEVO ARCHIVO A LA BASE DE DATOS
+  // 2. SUBIR NUEVO ARCHIVO FÍSICO A FIREBASE STORAGE Y FIRESTORE
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newFile.name || !newFile.url) return;
+    if (!selectedFile) return;
     
     setUploading(true);
 
-    // Auto-detectar tipo de archivo por la extensión en el nombre
-    const lowerName = newFile.name.toLowerCase();
-    const type = lowerName.endsWith(".pdf") ? "pdf" 
-               : lowerName.match(/\.(png|jpg|jpeg)$/) ? "image" 
-               : lowerName.match(/\.(mp4|mov)$/) ? "video" 
-               : lowerName.match(/\.(xls|xlsx)$/) ? "xls" 
-               : "doc";
-
     try {
+      // 2.1 Crear ruta única en Firebase Storage
+      const storagePath = `cloud_files/${Date.now()}_${selectedFile.name.replace(/\s+/g, '_')}`;
+      const storageRef = ref(storage, storagePath);
+
+      // 2.2 Subir el archivo físico a la nube
+      await uploadBytes(storageRef, selectedFile);
+      
+      // 2.3 Obtener la URL de descarga pública
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // 2.4 Auto-detectar tipo de archivo por la extensión
+      const lowerName = selectedFile.name.toLowerCase();
+      const type = lowerName.endsWith(".pdf") ? "pdf" 
+                 : lowerName.match(/\.(png|jpg|jpeg|gif)$/) ? "image" 
+                 : lowerName.match(/\.(mp4|mov|webm)$/) ? "video" 
+                 : lowerName.match(/\.(xls|xlsx|csv)$/) ? "xls" 
+                 : "doc";
+
+      // 2.5 Calcular peso legible (MB o KB)
+      const sizeInMB = selectedFile.size / (1024 * 1024);
+      const displaySize = sizeInMB > 1 
+        ? `${sizeInMB.toFixed(2)} MB` 
+        : `${(selectedFile.size / 1024).toFixed(0)} KB`;
+
+      // 2.6 Guardar registro en la base de datos Firestore
       await addDoc(collection(db, "cloud_files"), {
-        name: newFile.name,
-        url: newFile.url,
-        source: newFile.source,
+        name: selectedFile.name,
+        url: downloadURL,
+        storagePath: storagePath, // Guardamos la ruta para poder borrarlo en el futuro
+        source: 'INTECA Cloud',
         type,
-        size: "Enlace Externo", // Al ser enlace, el peso está en la nube original
+        size: displaySize,
         modifiedAt: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
         version: 1,
         createdAt: serverTimestamp()
       });
+      
       setShowUploadModal(false);
-      setNewFile({ name: '', url: '', source: 'INTECA Cloud' });
+      setSelectedFile(null);
     } catch (error) {
       console.error("Error subiendo archivo:", error);
-      alert("Hubo un error al guardar el archivo.");
+      alert("Hubo un error al subir el archivo. Verifica tu conexión y los permisos de Storage.");
     } finally {
       setUploading(false);
     }
   };
 
-  // 3. ELIMINAR ARCHIVO
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  // 3. ELIMINAR ARCHIVO (DE FIRESTORE Y DE STORAGE)
+  const handleDelete = async (file: RealCloudFile, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.confirm("¿Seguro que deseas eliminar este archivo de la biblioteca para todos los usuarios?")) {
+    if (window.confirm("¿Seguro que deseas eliminar este archivo permanentemente?")) {
       try {
-        await deleteDoc(doc(db, "cloud_files", id));
+        // Borrar el registro de Firestore
+        await deleteDoc(doc(db, "cloud_files", file.id));
+        
+        // Si el archivo estaba guardado físicamente en nuestro Storage, lo borramos también
+        if (file.storagePath) {
+          const storageRef = ref(storage, file.storagePath);
+          await deleteObject(storageRef);
+        }
       } catch (error) {
         console.error("Error eliminando archivo:", error);
       }
@@ -145,15 +174,16 @@ export default function FilesView() {
         <FileText className="w-16 h-16 text-emerald-500 mx-auto" />
         <div>
           <p className="text-sm font-bold text-slate-800">Vista previa nativa no disponible</p>
-          <p className="text-xs text-slate-500 mt-1">Este tipo de archivo ({file.type.toUpperCase()}) requiere abrirse en su plataforma original.</p>
+          <p className="text-xs text-slate-500 mt-1">Este tipo de archivo ({file.type.toUpperCase()}) requiere descargarse para visualizarse.</p>
         </div>
         <a 
           href={file.url || "#"} 
           target="_blank" 
           rel="noreferrer"
-          className="inline-block bg-slate-900 hover:bg-black text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md"
+          className="inline-block bg-slate-900 hover:bg-black text-white text-xs font-bold px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 max-w-[200px] mx-auto"
         >
-          Abrir Enlace Original
+          <Download className="w-4 h-4" />
+          Descargar Archivo
         </a>
       </div>
     );
@@ -209,7 +239,7 @@ export default function FilesView() {
           <div className="flex gap-12 mr-6">
             <span className="hidden md:inline">Origen</span>
             <span className="hidden md:inline">Versión</span>
-            <span className="text-center w-20">Acciones</span>
+            <span className="text-center w-28">Acciones</span>
           </div>
         </div>
 
@@ -222,7 +252,7 @@ export default function FilesView() {
           <div className="flex flex-col items-center justify-center py-24 gap-3">
             <FolderClosed className="w-12 h-12 text-slate-300" />
             <p className="text-sm font-bold text-slate-600">No hay archivos en esta ubicación</p>
-            <p className="text-xs text-slate-400">Presiona "Vincular Recurso" para agregar el primero.</p>
+            <p className="text-xs text-slate-400">Presiona "Vincular Recurso" para subir un documento.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -248,7 +278,22 @@ export default function FilesView() {
                   <span className="hidden md:inline font-mono font-bold text-slate-700">
                     v{file.version}.0
                   </span>
-                  <div className="flex gap-2 w-20 justify-end">
+                  <div className="flex gap-2 w-28 justify-end">
+                    
+                    {/* Botón Descargar */}
+                    {file.url && (
+                      <a 
+                        href={file.url} 
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 bg-sky-500/10 text-sky-600 rounded-lg hover:bg-sky-600 hover:text-white transition-colors"
+                        title="Descargar"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+
                     <button 
                       onClick={() => setSelectedPreview(file)}
                       className="p-1.5 bg-emerald-500/10 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
@@ -256,8 +301,9 @@ export default function FilesView() {
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
+                    
                     <button 
-                      onClick={(e) => handleDelete(file.id, e)}
+                      onClick={(e) => handleDelete(file, e)}
                       className="p-1.5 bg-rose-500/10 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
                       title="Eliminar Archivo"
                     >
@@ -271,14 +317,14 @@ export default function FilesView() {
         )}
       </div>
 
-      {/* MODAL DE SUBIDA */}
+      {/* MODAL DE SUBIDA FÍSICA */}
       {showUploadModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-900 flex items-center gap-2">
                 <Cloud className="w-5 h-5 text-emerald-500" />
-                Vincular Recurso a la Nube
+                Subir Archivo al Servidor
               </h3>
               <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-rose-500 transition-colors">
                 <X className="w-5 h-5" />
@@ -286,55 +332,31 @@ export default function FilesView() {
             </div>
             
             <form onSubmit={handleUpload} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nombre del Archivo (con extensión)</label>
+              
+              <div className="border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center hover:bg-slate-50 hover:border-emerald-500/50 transition-colors cursor-pointer relative group">
                 <input 
-                  type="text" 
+                  type="file" 
                   required
-                  placeholder="Ej. Manual_Farmacologia.pdf"
-                  value={newFile.name}
-                  onChange={e => setNewFile({...newFile, name: e.target.value})}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Enlace / URL de origen</label>
-                <div className="relative">
-                  <LinkIcon className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input 
-                    type="url" 
-                    required
-                    placeholder="https://drive.google.com/..."
-                    value={newFile.url}
-                    onChange={e => setNewFile({...newFile, url: e.target.value})}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Plataforma de Origen</label>
-                <select 
-                  value={newFile.source}
-                  onChange={e => setNewFile({...newFile, source: e.target.value})}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value="INTECA Cloud">INTECA Local Cloud</option>
-                  <option value="Drive">Google Drive</option>
-                  <option value="OneDrive">Microsoft OneDrive</option>
-                  <option value="Dropbox">Dropbox</option>
-                </select>
+                <FileUp className="w-8 h-8 text-slate-400 mx-auto mb-2 group-hover:text-emerald-500 transition-colors" />
+                <p className="text-xs font-bold text-slate-700">
+                  {selectedFile ? selectedFile.name : 'Toca para seleccionar un archivo'}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB listos para subir` : 'PDF, Word, Excel, Imágenes o Videos'}
+                </p>
               </div>
 
               <div className="pt-2">
                 <button 
                   type="submit" 
-                  disabled={uploading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-md"
+                  disabled={uploading || !selectedFile}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 text-sm shadow-md disabled:opacity-50"
                 >
                   {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  {uploading ? "Sincronizando..." : "Guardar en Base de Datos"}
+                  {uploading ? "Sincronizando en la Nube..." : "Subir Archivo Definitivo"}
                 </button>
               </div>
             </form>
