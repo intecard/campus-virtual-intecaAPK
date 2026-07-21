@@ -97,8 +97,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
-        // REGLA DE SEGURIDAD ABSOLUTA: 
-        // Todos nacen como 'student', excepto el master admin.
         const isMasterAdmin = email.toLowerCase() === "luisramirezescalante1985@gmail.com";
         const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
 
@@ -154,7 +152,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE BLINDADO
+  // INTERCEPTOR DE GOOGLE RESTAURADO
   const handleGoogleSignIn = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     setLoading(true);
@@ -164,8 +162,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       let result;
 
       if (Capacitor.isNativePlatform()) {
-        // MODO APK: NO USAMOS GoogleAuth.initialize() AQUÍ
-        // Android usará automáticamente los valores de capacitor.config.ts y strings.xml
+        // RESTAURADO: Esta inicialización es OBLIGATORIA en el código.
+        // Evita el NullPointerException nativo que cierra la app.
+        GoogleAuth.initialize({
+          clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
+          scopes: ['profile', 'email'],
+          grantOfflineAccess: true,
+        });
+
         const googleUser = await GoogleAuth.signIn();
         
         if (!googleUser || !googleUser.authentication || !googleUser.authentication.idToken) {
@@ -176,7 +180,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         result = await signInWithCredential(auth, credential);
 
       } else {
-        // MODO WEB
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
@@ -187,7 +190,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         if (userDoc.exists()) {
           onAuthSuccess(userDoc.data() as UserProfile);
         } else {
-          // Validar si es el master admin en el primer login de Google
           const isMasterAdmin = result.user.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
           const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
 
@@ -209,7 +211,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       } else if (err.code === 'auth/popup-closed-by-user' || err.type === 'user_cancelled') {
         setLoading(false); 
       } else {
-        // Imprimir el error de forma agresiva para saber el código exacto de fallo
         const errorMsg = err.message || JSON.stringify(err);
         setError(`Error Google: ${errorMsg}`);
         setLoading(false);
@@ -223,7 +224,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
       <div className="w-full max-w-md space-y-8">
         
-        {/* LOGO OFICIAL INTECA */}
         <div className="flex items-center gap-4">
           <svg className="w-16 h-16" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15,50 C15,22 35,10 50,10 C65,10 85,22 85,50" stroke="#10b981" strokeWidth="6" strokeLinecap="round" />
