@@ -98,7 +98,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
         // REGLA DE SEGURIDAD ABSOLUTA: 
-        // Todos nacen como 'student', excepto el master admin (Luis).
+        // Todos nacen como 'student', excepto el master admin.
         const isMasterAdmin = email.toLowerCase() === "luisramirezescalante1985@gmail.com";
         const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
 
@@ -154,7 +154,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE BLINDADO CONTRA RECARGAS DE PÁGINA Y CON ASIGNACIÓN DE ROL SEGURA
+  // INTERCEPTOR DE GOOGLE BLINDADO
   const handleGoogleSignIn = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     setLoading(true);
@@ -164,19 +164,19 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       let result;
 
       if (Capacitor.isNativePlatform()) {
-        // 1. MODO APK
-        GoogleAuth.initialize({
-          clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
-          scopes: ['profile', 'email'],
-          grantOfflineAccess: true,
-        });
-
+        // MODO APK: NO USAMOS GoogleAuth.initialize() AQUÍ
+        // Android usará automáticamente los valores de capacitor.config.ts y strings.xml
         const googleUser = await GoogleAuth.signIn();
+        
+        if (!googleUser || !googleUser.authentication || !googleUser.authentication.idToken) {
+          throw new Error("No se pudo obtener el token de seguridad de Google.");
+        }
+
         const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
         result = await signInWithCredential(auth, credential);
 
       } else {
-        // 2. MODO WEB
+        // MODO WEB
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
@@ -187,7 +187,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         if (userDoc.exists()) {
           onAuthSuccess(userDoc.data() as UserProfile);
         } else {
-          // REGLA DE SEGURIDAD ABSOLUTA EN GOOGLE: 
           // Validar si es el master admin en el primer login de Google
           const isMasterAdmin = result.user.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
           const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
@@ -204,13 +203,15 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         }
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("GOOGLE AUTH ERROR:", err);
       if (err.code === 'auth/multi-factor-auth-required') {
         handleMfaRequired(err);
       } else if (err.code === 'auth/popup-closed-by-user' || err.type === 'user_cancelled') {
         setLoading(false); 
       } else {
-        setError(`Error Google: ${err.message || "Fallo en la autenticación"}`);
+        // Imprimir el error de forma agresiva para saber el código exacto de fallo
+        const errorMsg = err.message || JSON.stringify(err);
+        setError(`Error Google: ${errorMsg}`);
         setLoading(false);
       }
     }
