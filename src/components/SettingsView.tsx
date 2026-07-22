@@ -41,31 +41,55 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
   const [verificationCode, setVerificationCode] = useState("");
 
   // ==========================================
-  // SUBIR IMAGEN DESDE LA GALERÍA A LA NUBE
+  // SUBIR IMAGEN DESDE LA GALERÍA Y AUTO-GUARDAR
   // ==========================================
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validar que sea realmente una imagen
+    if (!file.type.startsWith('image/')) {
+      alert("Formato no válido. Por favor, selecciona una imagen de tu galería.");
+      return;
+    }
+
     setUploadingImage(true);
     try {
-      // Creamos una ruta única en Storage para la nueva foto
+      // 1. Creamos una ruta única en Storage
       const storageRef = ref(storage, `avatars/${currentUser.id}_${Date.now()}`);
+      
+      // 2. Subimos la imagen a la nube
       await uploadBytes(storageRef, file);
+      
+      // 3. Obtenemos el link público
       const downloadURL = await getDownloadURL(storageRef);
       
-      // Actualizamos el estado de la vista con la nueva URL de la nube
+      // 4. Actualizamos el estado visual
       setUserAvatar(downloadURL);
+
+      // 5. AUTO-GUARDADO: Actualizamos Firestore inmediatamente
+      const userRef = doc(db, "users", currentUser.id);
+      await updateDoc(userRef, { avatar: downloadURL });
+
+      // 6. Avisamos a la aplicación completa (App.tsx) que la foto cambió
+      onChangeProfile({
+        name: userName,
+        phone: userPhone,
+        avatar: downloadURL
+      });
+
+      alert("¡Foto de perfil actualizada con éxito!");
+
     } catch (error) {
       console.error("Error al subir la imagen:", error);
-      alert("Hubo un error al subir la imagen a la nube. Intenta con una foto más ligera.");
+      alert("Hubo un error al subir la imagen. Verifica tu conexión o intenta con una foto más ligera.");
     } finally {
       setUploadingImage(false);
     }
   };
 
   // ==========================================
-  // GUARDAR PERFIL REAL EN FIREBASE
+  // GUARDAR PERFIL (NOMBRES Y TELÉFONO)
   // ==========================================
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,8 +126,6 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      // Al cerrar sesión en Firebase, el listener en App.tsx detectará el cambio
-      // y devolverá automáticamente al usuario a la pantalla de login.
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
       alert("No se pudo cerrar la sesión. Verifica tu conexión.");
@@ -198,9 +220,9 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
               </div>
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
-                <div className="flex items-center gap-6">
+                <div className="flex flex-col sm:flex-row items-center gap-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                   {/* Selector Interactivo de Avatar */}
-                  <div className="relative group cursor-pointer w-20 h-20 shrink-0">
+                  <div className="relative group cursor-pointer w-24 h-24 shrink-0">
                     <input 
                       type="file" 
                       accept="image/*" 
@@ -213,27 +235,26 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                       <img 
                         src={userAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.name}`} 
                         alt="Avatar del Usuario" 
-                        className={`w-full h-full rounded-full border-2 border-slate-200 bg-slate-50 object-cover transition-opacity ${uploadingImage ? 'opacity-50' : 'group-hover:opacity-70'}`}
+                        className={`w-full h-full rounded-full border-4 border-white shadow-md bg-slate-200 object-cover transition-opacity ${uploadingImage ? 'opacity-50' : 'group-hover:opacity-70'}`}
                       />
-                      <div className={`absolute inset-0 flex items-center justify-center rounded-full transition-opacity ${uploadingImage ? 'opacity-100 bg-black/30' : 'opacity-0 group-hover:opacity-100 bg-black/40'}`}>
+                      <div className={`absolute inset-0 flex items-center justify-center rounded-full transition-opacity ${uploadingImage ? 'opacity-100 bg-black/30' : 'opacity-0 group-hover:opacity-100 bg-slate-900/50'}`}>
                         {uploadingImage ? (
                           <Loader2 className="w-6 h-6 text-white animate-spin" />
                         ) : (
-                          <Camera className="w-6 h-6 text-white" />
+                          <div className="flex flex-col items-center">
+                            <Camera className="w-6 h-6 text-white" />
+                            <span className="text-[8px] text-white font-bold mt-1">Cambiar</span>
+                          </div>
                         )}
                       </div>
                     </label>
                   </div>
 
-                  <div className="flex-1">
-                    <label className="block text-xs font-bold text-slate-600 mb-1">URL de Foto de Perfil (Avatar):</label>
-                    <input
-                      type="text"
-                      value={userAvatar}
-                      onChange={(e) => setUserAvatar(e.target.value)}
-                      placeholder="Sube una imagen o pega un enlace aquí"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs focus:ring-1 focus:ring-emerald-500 focus:bg-white focus:outline-none transition-all font-mono"
-                    />
+                  <div className="flex-1 text-center sm:text-left">
+                    <p className="text-sm font-bold text-slate-800">Foto de Perfil</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Toca la imagen para seleccionar una foto desde tu galería. Se guardará automáticamente.
+                    </p>
                   </div>
                 </div>
 
@@ -285,7 +306,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row justify-between items-center pt-4 border-t border-slate-100 gap-4">
                   {saveSuccess ? (
                     <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5 animate-pulse">
                       <CheckCircle2 className="w-4 h-4" />
@@ -298,7 +319,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                   <button
                     type="submit"
                     disabled={saving || uploadingImage}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all flex items-center gap-2 shadow-md disabled:opacity-50"
+                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-3 px-8 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md disabled:opacity-50"
                   >
                     {saving ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /><span>Sincronizando...</span></>

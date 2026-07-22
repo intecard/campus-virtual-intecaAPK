@@ -1,6 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- ========================================== -->
+    <!-- PERMISOS DE RED Y HARDWARE (INTECA)        -->
+    <!-- ========================================== -->
+    
+    <!-- Conexión a Firebase y la Nube -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    
+    <!-- Permisos para Videollamadas (Cámara y Micrófono) -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    
+    <!-- Permisos para la Galería (Cambiar Foto de Perfil) -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- Indicador para Google Play de que la cámara es opcional pero se usa -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+
+    <!-- ========================================== -->
+    <!-- CONFIGURACIÓN DE LA APLICACIÓN             -->
+    <!-- ========================================== -->
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -35,7 +59,4 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
-    <uses-permission android:name="android.permission.INTERNET" />
 </manifest>
