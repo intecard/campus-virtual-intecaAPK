@@ -16,7 +16,9 @@ import {
   Sparkles,
   ShieldCheck,
   AlertCircle,
-  Clock
+  Clock,
+  UserPlus,
+  Loader2
 } from "lucide-react";
 import { db, logUserActivity, addNotificationToUser } from "../firebase";
 import { 
@@ -28,6 +30,7 @@ import {
   orderBy, 
   setDoc,
   getDoc,
+  addDoc,
   serverTimestamp 
 } from "firebase/firestore";
 import { UserProfile, UserRole } from "../types";
@@ -68,7 +71,17 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
 
-  // Stats Counters (Inician estrictamente en 0)
+  // States: REGISTRO DE USUARIOS
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    role: "student",
+    academicId: `INTECA-${Date.now().toString().slice(-6)}`
+  });
+  const [registering, setRegistering] = useState(false);
+  const [registerSuccess, setRegisterSuccess] = useState("");
+
+  // Stats Counters
   const [stats, setStats] = useState({
     totalUsers: 0,
     students: 0,
@@ -108,7 +121,6 @@ export default function AdminView({ currentUser }: AdminViewProps) {
         };
         fetchedUsers.push(userData);
 
-        // Conteo Matemático Estricto de Datos Reales
         if (userData.suspended) suspended++;
         if (userData.role === 'student') students++;
         else if (userData.role === 'teacher') teachers++;
@@ -192,6 +204,53 @@ export default function AdminView({ currentUser }: AdminViewProps) {
     fetchData();
   }, []);
 
+  // ==========================================
+  // FUNCIÓN: REGISTRO DE NUEVOS USUARIOS
+  // ==========================================
+  const handleRegisterUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.name || !formData.email) {
+      alert("Nombre y correo son obligatorios.");
+      return;
+    }
+
+    setRegistering(true);
+    setRegisterSuccess("");
+
+    try {
+      await addDoc(collection(db, "users"), {
+        name: formData.name,
+        email: formData.email.toLowerCase(),
+        role: formData.role,
+        academicId: formData.academicId,
+        status: 'active',
+        joinedDate: new Date().toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }),
+        createdAt: serverTimestamp()
+      });
+
+      if (typeof logUserActivity === 'function') {
+        await logUserActivity(
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+          "USER_REGISTER", `Registró al usuario: ${formData.email} con rol ${formData.role.toUpperCase()}`
+        );
+      }
+
+      setRegisterSuccess(`¡Credencial para ${formData.name} (${formData.role}) emitida con éxito!`);
+      setFormData({
+        name: "", email: "", role: "student",
+        academicId: `INTECA-${Date.now().toString().slice(-6)}`
+      });
+      fetchData(); // Recargar métricas
+      
+      setTimeout(() => setRegisterSuccess(""), 4000);
+    } catch (error) {
+      console.error("Error registrando usuario:", error);
+      alert("Error al registrar el usuario en la base de datos.");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
   const handleRoleChange = async (userId: string, newRole: UserRole, targetName: string) => {
     try {
       const userDocRef = doc(db, "users", userId);
@@ -199,12 +258,8 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       
       if (typeof logUserActivity === 'function') {
         await logUserActivity(
-          currentUser.id,
-          currentUser.name,
-          currentUser.email,
-          currentUser.role,
-          "ROLE_CHANGE",
-          `Se modificó el rol de "${targetName}" (ID: ${userId}) a "${newRole}"`
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+          "ROLE_CHANGE", `Se modificó el rol de "${targetName}" a "${newRole}"`
         );
       }
 
@@ -213,7 +268,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       }
 
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, role: newRole } : u));
-      fetchData(); // Sincroniza métricas
+      fetchData();
     } catch (err) {
       console.error("Error updating role:", err);
       alert("No se pudo actualizar el rol. Verifique los permisos.");
@@ -228,17 +283,14 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       
       if (typeof logUserActivity === 'function') {
         await logUserActivity(
-          currentUser.id,
-          currentUser.name,
-          currentUser.email,
-          currentUser.role,
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
           newSuspended ? "USER_SUSPEND" : "USER_ACTIVATE",
-          `Se ${newSuspended ? 'suspendió' : 'activó'} la cuenta de "${targetName}" (ID: ${userId})`
+          `Se ${newSuspended ? 'suspendió' : 'activó'} la cuenta de "${targetName}"`
         );
       }
 
       setUsersList(prev => prev.map(u => u.id === userId ? { ...u, suspended: newSuspended } : u));
-      fetchData(); // Sincroniza métricas
+      fetchData();
     } catch (err) {
       console.error("Error toggling suspension:", err);
       alert("Error al modificar el estado de la cuenta.");
@@ -250,21 +302,14 @@ export default function AdminView({ currentUser }: AdminViewProps) {
     try {
       const configDocRef = doc(db, "system_config", "global");
       await setDoc(configDocRef, {
-        publicRegEnabled,
-        aiTutorEnabled,
-        strict2FA,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser.name
+        publicRegEnabled, aiTutorEnabled, strict2FA,
+        updatedAt: serverTimestamp(), updatedBy: currentUser.name
       });
 
       if (typeof logUserActivity === 'function') {
         await logUserActivity(
-          currentUser.id,
-          currentUser.name,
-          currentUser.email,
-          currentUser.role,
-          "CONFIG_UPDATE",
-          `Configuración global actualizada: Registro=${publicRegEnabled}, TutorIA=${aiTutorEnabled}, 2FAExigido=${strict2FA}`
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+          "CONFIG_UPDATE", `Configuración actualizada: Registro=${publicRegEnabled}, TutorIA=${aiTutorEnabled}`
         );
       }
 
@@ -291,12 +336,8 @@ export default function AdminView({ currentUser }: AdminViewProps) {
       
       if (typeof logUserActivity === 'function') {
         await logUserActivity(
-          currentUser.id,
-          currentUser.name,
-          currentUser.email,
-          currentUser.role,
-          "BROADCAST",
-          `Anuncio global emitido: "${broadcastText.substring(0, 60)}..."`
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+          "BROADCAST", `Anuncio global emitido: "${broadcastText.substring(0, 60)}..."`
         );
       }
 
@@ -315,18 +356,10 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   const exportUsersToCSV = () => {
     const headers = ["ID", "Nombre", "Email", "Telefono", "Rol", "Joined Date", "Suspended"];
     const rows = usersList.map(u => [
-      u.id,
-      u.name,
-      u.email,
-      u.phone,
-      u.role,
-      u.joinedDate,
-      u.suspended ? "SI" : "NO"
+      u.id, u.name, u.email, u.phone, u.role, u.joinedDate, u.suspended ? "SI" : "NO"
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
-    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -339,19 +372,10 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   const exportLogsToCSV = () => {
     const headers = ["ID Log", "User ID", "Usuario", "Email", "Rol", "Accion", "Detalles", "Fecha"];
     const rows = auditLogs.map(l => [
-      l.id || "",
-      l.userId || "",
-      l.userName || "",
-      l.userEmail || "",
-      l.userRole || "",
-      l.action || "",
-      l.details || "",
-      l.timeString || ""
+      l.id || "", l.userId || "", l.userName || "", l.userEmail || "", l.userRole || "", l.action || "", l.details || "", l.timeString || ""
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
-    
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
@@ -403,35 +427,16 @@ export default function AdminView({ currentUser }: AdminViewProps) {
         </div>
 
         <div class="summary-cards">
-          <div class="card">
-            <div class="card-title">Usuarios Totales</div>
-            <div class="card-value">${stats.totalUsers}</div>
-          </div>
-          <div class="card">
-            <div class="card-title">Estudiantes</div>
-            <div class="card-value">${stats.students}</div>
-          </div>
-          <div class="card">
-            <div class="card-title">Docentes</div>
-            <div class="card-value">${stats.teachers}</div>
-          </div>
-          <div class="card">
-            <div class="card-title">Auditores</div>
-            <div class="card-value">${stats.observers}</div>
-          </div>
+          <div class="card"><div class="card-title">Usuarios Totales</div><div class="card-value">${stats.totalUsers}</div></div>
+          <div class="card"><div class="card-title">Estudiantes</div><div class="card-value">${stats.students}</div></div>
+          <div class="card"><div class="card-title">Docentes</div><div class="card-value">${stats.teachers}</div></div>
+          <div class="card"><div class="card-title">Auditores</div><div class="card-value">${stats.observers}</div></div>
         </div>
 
         <h2>Directorio de Cuentas Escolares</h2>
         <table>
           <thead>
-            <tr>
-              <th>ID Matrícula</th>
-              <th>Nombre Completo</th>
-              <th>Email</th>
-              <th>Rol Académico</th>
-              <th>Registro</th>
-              <th>Suspensión</th>
-            </tr>
+            <tr><th>ID Matrícula</th><th>Nombre Completo</th><th>Email</th><th>Rol Académico</th><th>Registro</th><th>Suspensión</th></tr>
           </thead>
           <tbody>
             ${usersList.map(u => `
@@ -450,13 +455,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
         <h2>Historial Reciente de Auditoría y Logs</h2>
         <table>
           <thead>
-            <tr>
-              <th>Fecha / Hora</th>
-              <th>Usuario</th>
-              <th>Rol</th>
-              <th>Operación</th>
-              <th>Detalles</th>
-            </tr>
+            <tr><th>Fecha / Hora</th><th>Usuario</th><th>Rol</th><th>Operación</th><th>Detalles</th></tr>
           </thead>
           <tbody>
             ${auditLogs.slice(0, 15).map(l => `
@@ -499,7 +498,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
            (l.details || "").toLowerCase().includes(logSearch.toLowerCase());
   });
 
-  // ESCUDO DE PROTECCIÓN: Si un estudiante llega a esta vista por error, lo bloquea.
+  // ESCUDO DE PROTECCIÓN: Si un estudiante llega a esta vista, lo bloquea.
   if (currentUser.role !== 'admin') {
     return (
       <div className="p-8 text-center bg-white rounded-3xl border border-slate-100 shadow-sm m-6 animate-in zoom-in-95">
@@ -664,6 +663,64 @@ export default function AdminView({ currentUser }: AdminViewProps) {
           </form>
         </div>
       </div>
+
+      {/* =============================================================== */}
+      {/* NUEVA SECCIÓN INTEGRADA: CREACIÓN DE CREDENCIALES               */}
+      {/* =============================================================== */}
+      <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+        <div>
+          <h3 className="font-bold text-slate-950 font-display flex items-center gap-2">
+            <UserPlus className="w-5 h-5 text-emerald-500" />
+            <span>Creación de Credenciales (Nuevo Usuario)</span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Registra directamente cuentas oficiales en la plataforma. 
+            {isMaster ? " Tienes poder absoluto para crear nuevos Administradores TI." : " Solo el Master Admin puede crear Administradores."}
+          </p>
+        </div>
+        
+        {registerSuccess && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center gap-2 text-xs font-bold animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-500" />
+            {registerSuccess}
+          </div>
+        )}
+
+        <form onSubmit={handleRegisterUser} className="space-y-4 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Nombre Completo</label>
+              <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" required placeholder="Ej. Ana Pérez" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Correo (Login)</label>
+              <input type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:ring-1 focus:ring-emerald-500 outline-none transition-colors" required placeholder="usuario@inteca.edu.co" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Rol Institucional</label>
+              <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="w-full bg-emerald-50 border border-emerald-200 rounded-xl py-2.5 px-3 text-xs focus:ring-1 focus:ring-emerald-500 outline-none font-bold text-emerald-800 cursor-pointer">
+                <option value="student">Estudiante</option>
+                <option value="teacher">Profesor</option>
+                <option value="observer">Auditor / SISALRIL</option>
+                {/* LA REGLA DEL MASTER APLICADA */}
+                {isMaster && <option value="admin">Administrador TI</option>}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">ID Académico</label>
+              <input type="text" value={formData.academicId} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-mono text-slate-500 outline-none cursor-not-allowed" />
+            </div>
+          </div>
+          <div className="flex justify-end pt-2">
+            <button type="submit" disabled={registering} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all shadow-md flex items-center gap-2 disabled:opacity-50">
+              {registering ? <Loader2 className="w-4 h-4 animate-spin"/> : <UserPlus className="w-4 h-4"/>}
+              {registering ? "Emitiendo en Base de Datos..." : "Emitir Credencial"}
+            </button>
+          </div>
+        </form>
+      </div>
+      {/* =============================================================== */}
+
 
       <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">

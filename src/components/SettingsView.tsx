@@ -16,7 +16,7 @@ import { UserProfile } from "../types";
 import { auth, db, storage } from "../firebase";
 import { doc, updateDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 
 interface SettingsViewProps {
   currentUser: UserProfile;
@@ -41,55 +41,74 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
   const [verificationCode, setVerificationCode] = useState("");
 
   // ==========================================
-  // SUBIR IMAGEN DESDE LA GALERÍA Y AUTO-GUARDAR
+  // SUBIR IMAGEN (CON TRUCO PARA ANDROID NATIVO)
   // ==========================================
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validar que sea realmente una imagen
-    if (!file.type.startsWith('image/')) {
-      alert("Formato no válido. Por favor, selecciona una imagen de tu galería.");
+    if (!file) {
+      setUploadingImage(false);
       return;
     }
 
     setUploadingImage(true);
+    
     try {
-      // 1. Creamos una ruta única en Storage
+      // 🛡️ TRUCO ANTI-CONGELAMIENTO PARA ANDROID:
+      // Convertimos el archivo local a un "Blob" binario puro en memoria.
+      // Esto evita que Firebase intente acceder a rutas bloqueadas del celular y se quede colgado.
+      const arrayBuffer = await file.arrayBuffer();
+      const blob = new Blob([new Uint8Array(arrayBuffer)], { type: file.type });
+
+      // Creamos la referencia en Firebase Storage
       const storageRef = ref(storage, `avatars/${currentUser.id}_${Date.now()}`);
       
-      // 2. Subimos la imagen a la nube
-      await uploadBytes(storageRef, file);
-      
-      // 3. Obtenemos el link público
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      // 4. Actualizamos el estado visual
-      setUserAvatar(downloadURL);
+      // Usamos uploadBytesResumable que no se bloquea en móviles
+      const uploadTask = uploadBytesResumable(storageRef, blob, { contentType: file.type });
 
-      // 5. AUTO-GUARDADO: Actualizamos Firestore inmediatamente
-      const userRef = doc(db, "users", currentUser.id);
-      await updateDoc(userRef, { avatar: downloadURL });
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          // El progreso avanza correctamente
+        }, 
+        (error) => {
+          console.error("Error de Firebase:", error);
+          alert("Error al subir la imagen: " + error.message);
+          setUploadingImage(false);
+        }, 
+        async () => {
+          try {
+            // Obtenemos el link cuando termina de subir
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+            
+            // Actualizamos la vista
+            setUserAvatar(downloadURL);
+            
+            // Auto-guardamos en la Base de Datos
+            const userRef = doc(db, "users", currentUser.id);
+            await updateDoc(userRef, { avatar: downloadURL });
 
-      // 6. Avisamos a la aplicación completa (App.tsx) que la foto cambió
-      onChangeProfile({
-        name: userName,
-        phone: userPhone,
-        avatar: downloadURL
-      });
+            onChangeProfile({
+              name: userName,
+              phone: userPhone,
+              avatar: downloadURL
+            });
 
-      alert("¡Foto de perfil actualizada con éxito!");
-
-    } catch (error) {
-      console.error("Error al subir la imagen:", error);
-      alert("Hubo un error al subir la imagen. Verifica tu conexión o intenta con una foto más ligera.");
-    } finally {
+            alert("¡Foto de perfil actualizada con éxito!");
+            setUploadingImage(false);
+          } catch (err) {
+            console.error("Error al guardar URL:", err);
+            setUploadingImage(false);
+          }
+        }
+      );
+    } catch (error: any) {
+      console.error("Error fatal procesando imagen:", error);
+      alert("Hubo un error de procesamiento. Intenta de nuevo.");
       setUploadingImage(false);
     }
   };
 
   // ==========================================
-  // GUARDAR PERFIL (NOMBRES Y TELÉFONO)
+  // GUARDAR PERFIL REAL EN FIREBASE
   // ==========================================
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,12 +245,13 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                     <input 
                       type="file" 
                       accept="image/*" 
+                      capture="user"
                       className="hidden" 
                       id="avatar-upload"
                       onChange={handleImageUpload}
                       disabled={uploadingImage}
                     />
-                    <label htmlFor="avatar-upload" className="cursor-pointer block w-full h-full">
+                    <label htmlFor="avatar-upload" className="cursor-pointer block w-full h-full relative">
                       <img 
                         src={userAvatar || `https://api.dicebear.com/7.x/initials/svg?seed=${currentUser.name}`} 
                         alt="Avatar del Usuario" 
@@ -253,7 +273,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
                   <div className="flex-1 text-center sm:text-left">
                     <p className="text-sm font-bold text-slate-800">Foto de Perfil</p>
                     <p className="text-xs text-slate-500 mt-1">
-                      Toca la imagen para seleccionar una foto desde tu galería. Se guardará automáticamente.
+                      Toca la imagen para tomarte una foto o seleccionar desde tu galería. Se guardará automáticamente en la nube.
                     </p>
                   </div>
                 </div>
