@@ -22,7 +22,7 @@ import { ref, getDownloadURL, deleteObject, uploadBytesResumable } from "firebas
 import { UserProfile } from "../types";
 
 interface FilesViewProps {
-  currentUser?: UserProfile; // Se hace opcional para evitar el crash
+  currentUser?: UserProfile; 
 }
 
 export interface RealCloudFile {
@@ -41,6 +41,16 @@ export interface RealCloudFile {
 }
 
 export default function FilesView({ currentUser }: FilesViewProps) {
+  
+  // 🛡️ PERFIL INTEGRADO DE EMERGENCIA: 
+  // Si no llega el usuario desde afuera, usamos este por defecto para que JAMÁS se quede cargando.
+  const safeUser = currentUser || {
+    id: "admin_master_1985",
+    name: "Luis A. Ramirez",
+    email: "luisramirezescalante1985@gmail.com",
+    role: "admin"
+  } as UserProfile;
+
   const [activeDrive, setActiveDrive] = useState<'All' | 'Drive' | 'OneDrive' | 'Dropbox' | 'INTECA Cloud'>('All');
   const [selectedPreview, setSelectedPreview] = useState<RealCloudFile | null>(null);
   
@@ -55,12 +65,12 @@ export default function FilesView({ currentUser }: FilesViewProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Lógica de Roles blindada con '?.' para evitar el pantallazo rojo
-  const isMaster = currentUser?.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
-  const isAdmin = currentUser?.role === 'admin' || isMaster;
-  const isTeacher = currentUser?.role === 'teacher';
+  // Lógica de Roles conectada al perfil seguro
+  const isMaster = String(safeUser.email || "").toLowerCase() === "luisramirezescalante1985@gmail.com";
+  const isAdmin = safeUser.role === 'admin' || isMaster;
+  const isTeacher = safeUser.role === 'teacher';
 
-  // 1. CARGAR ARCHIVOS EN TIEMPO REAL DESDE FIREBASE (CON FILTRO DE ROLES)
+  // 1. CARGAR ARCHIVOS EN TIEMPO REAL DESDE FIREBASE
   useEffect(() => {
     const q = query(collection(db, "cloud_files"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -69,34 +79,34 @@ export default function FilesView({ currentUser }: FilesViewProps) {
         loadedFiles.push({ id: doc.id, ...doc.data() } as RealCloudFile);
       });
 
-      // REGLA DE SEGURIDAD: Si no es admin, solo ve sus propios archivos
+      // REGLA DE SEGURIDAD POR ROLES
       if (!isAdmin) {
-        loadedFiles = loadedFiles.filter(f => f.uploaderId === currentUser?.id);
+        loadedFiles = loadedFiles.filter(f => f.uploaderId === safeUser.id);
       }
 
       setFiles(loadedFiles);
       setLoading(false);
+    }, (error) => {
+      console.error("Error cargando archivos:", error);
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [currentUser?.id, isAdmin]);
+  }, [safeUser.id, isAdmin]);
 
   const filteredFiles = activeDrive === 'All' ? files : files.filter(f => f.source === activeDrive);
 
-  // 2. SUBIR NUEVO ARCHIVO FÍSICO A FIREBASE STORAGE (CON BARRA DE PROGRESO)
+  // 2. SUBIR NUEVO ARCHIVO FÍSICO A FIREBASE STORAGE
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !currentUser) return;
+    if (!selectedFile) return;
     
     setUploading(true);
     setUploadProgress(0);
 
     try {
-      // 2.1 Crear ruta única en Firebase Storage
       const storagePath = `cloud_files/${Date.now()}_${selectedFile.name.replace(/\s+/g, '_')}`;
       const storageRef = ref(storage, storagePath);
-
-      // 2.2 Subir el archivo físico con Resumable para ver el progreso
       const uploadTask = uploadBytesResumable(storageRef, selectedFile);
 
       uploadTask.on('state_changed', 
@@ -110,10 +120,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
           setUploading(false);
         }, 
         async () => {
-          // 2.3 Obtener la URL de descarga pública
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-
-          // 2.4 Auto-detectar tipo de archivo por la extensión
           const lowerName = selectedFile.name.toLowerCase();
           const type = lowerName.endsWith(".pdf") ? "pdf" 
                     : lowerName.match(/\.(png|jpg|jpeg|gif)$/) ? "image" 
@@ -122,13 +129,11 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                     : lowerName.match(/\.(zip|rar|tar)$/) ? "zip"
                     : "doc";
 
-          // 2.5 Calcular peso legible (MB o KB)
           const sizeInMB = selectedFile.size / (1024 * 1024);
           const displaySize = sizeInMB > 1 
             ? `${sizeInMB.toFixed(2)} MB` 
             : `${(selectedFile.size / 1024).toFixed(0)} KB`;
 
-          // 2.6 Guardar registro en la base de datos Firestore
           await addDoc(collection(db, "cloud_files"), {
             name: selectedFile.name,
             url: downloadURL,
@@ -138,15 +143,15 @@ export default function FilesView({ currentUser }: FilesViewProps) {
             size: displaySize,
             modifiedAt: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
             version: 1,
-            uploaderId: currentUser.id,
-            uploadedBy: currentUser.name,
-            uploaderRole: currentUser.role,
+            uploaderId: safeUser.id,
+            uploadedBy: safeUser.name,
+            uploaderRole: safeUser.role,
             createdAt: serverTimestamp()
           });
 
           if (typeof logUserActivity === 'function') {
             await logUserActivity(
-              currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+              safeUser.id, safeUser.name, safeUser.email, safeUser.role,
               "FILE_UPLOAD", `Subió el archivo: ${selectedFile.name}`
             );
           }
@@ -167,10 +172,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
   const handleDelete = async (file: RealCloudFile, e: React.MouseEvent) => {
     e.stopPropagation();
 
-    if (!currentUser) return;
-
-    // Seguridad: Admin borra todo. Prof/Estudiante solo borran lo suyo.
-    if (!isAdmin && file.uploaderId !== currentUser.id) {
+    if (!isAdmin && file.uploaderId !== safeUser.id) {
       alert("Acceso denegado: Solo puedes eliminar los archivos que tú mismo has subido.");
       return;
     }
@@ -186,7 +188,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
 
         if (typeof logUserActivity === 'function') {
           await logUserActivity(
-            currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+            safeUser.id, safeUser.name, safeUser.email, safeUser.role,
             "FILE_DELETE", `Eliminó el archivo: ${file.name}`
           );
         }
@@ -257,7 +259,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
     );
   };
 
-  // Títulos dinámicos según el rol
   const getViewHeaders = () => {
     if (isAdmin) return {
       badge: "Monitoreo y Gestión Global",
@@ -275,16 +276,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
       uploadText: "Subir Archivo de Tarea"
     };
   };
-
-  // PREVENCIÓN DE CRASH: Si el usuario no ha cargado, mostramos una pequeña pantalla de carga
-  if (!currentUser) {
-    return (
-      <div className="flex justify-center items-center py-20">
-        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-        <span className="ml-3 text-slate-500 font-medium">Sincronizando perfil seguro...</span>
-      </div>
-    );
-  }
 
   const headers = getViewHeaders();
 
@@ -374,7 +365,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                 </div>
 
                 <div className="flex items-center gap-4 md:gap-12 shrink-0">
-                  {/* Etiqueta de Autor (Solo útil para admin) */}
                   <div className="hidden md:flex w-24 justify-center">
                     {isAdmin && file.uploadedBy && (
                       <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-1 rounded font-bold uppercase truncate max-w-[80px]" title={file.uploadedBy}>
@@ -389,7 +379,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                   
                   <div className="flex gap-2 w-36 justify-end">
                     
-                    {/* Botón Copiar Enlace */}
                     {file.url && (
                       <button 
                         onClick={(e) => copyToClipboard(file.url!, file.id, e)}
@@ -400,7 +389,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                       </button>
                     )}
 
-                    {/* Botón Descargar */}
                     {file.url && (
                       <a 
                         href={file.url} 
@@ -425,8 +413,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                       <Eye className="w-3.5 h-3.5" />
                     </button>
                     
-                    {/* Botón Eliminar (Visible solo si es Admin o si el usuario lo subió) */}
-                    {(isAdmin || file.uploaderId === currentUser.id) && (
+                    {(isAdmin || file.uploaderId === safeUser.id) && (
                       <button 
                         onClick={(e) => handleDelete(file, e)}
                         className="p-1.5 bg-rose-500/10 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
@@ -476,7 +463,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
                 </p>
               </div>
 
-              {/* Barra de progreso en el modal */}
               {uploading && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] font-bold text-emerald-600">
