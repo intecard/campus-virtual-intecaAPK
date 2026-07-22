@@ -11,7 +11,7 @@ import {
   PhoneMultiFactorGenerator,
   RecaptchaVerifier
 } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { UserProfile, UserRole } from "../types";
 import { Loader2, AlertCircle, KeyRound } from "lucide-react";
 import { Capacitor } from '@capacitor/core';
@@ -35,13 +35,64 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [verificationId, setVerificationId] = useState("");
   const [mfaResolver, setMfaResolver] = useState<any>(null);
 
-  const generateSafeProfile = (uid: string, name: string, email: string, role: UserRole): UserProfile => {
-    return {
-      id: uid,
-      name: name || "Usuario Nuevo",
-      email: email || "",
-      role: role,
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${name.replace(/ /g, '')}`,
+  // ==========================================
+  // INTERCEPTOR INTELIGENTE DE PERFILES
+  // ==========================================
+  const linkOrGenerateProfile = async (user: any, assignedRoleFallback: UserRole, customName?: string): Promise<UserProfile> => {
+    const emailLower = user.email?.toLowerCase() || "";
+    const usersRef = collection(db, "users");
+    const uidDocRef = doc(db, "users", user.uid);
+
+    // 1. ¿Ya existe un perfil con este UID exacto? (Login normal)
+    const uidDocSnap = await getDoc(uidDocRef);
+    if (uidDocSnap.exists()) {
+      return uidDocSnap.data() as UserProfile;
+    }
+
+    // 2. Si no existe, buscamos si el Administrador PRE-REGISTRÓ este correo
+    const q = query(usersRef, where("email", "==", emailLower));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      // ¡El admin ya había creado esta cuenta! Fusionamos los datos.
+      const adminDoc = querySnapshot.docs[0];
+      const adminData = adminDoc.data();
+
+      const mergedProfile: UserProfile = {
+        id: user.uid, // Aseguramos que use el UID oficial de la Autenticación
+        name: customName || user.displayName || adminData.name || "Usuario INTECA",
+        email: emailLower,
+        role: adminData.role || assignedRoleFallback, // ¡MANTIENE EL ROL DEL ADMIN!
+        avatar: user.photoURL || adminData.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${emailLower}`,
+        academicId: adminData.academicId || `INTECA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        joinedDate: adminData.joinedDate || new Date().toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }),
+        progress: adminData.progress || 0,
+        attendanceRate: adminData.attendanceRate || 100,
+        averageGrade: adminData.averageGrade || 0,
+        suspended: adminData.suspended || false
+      };
+
+      // Guardamos el perfil fusionado en el UID correcto
+      await setDoc(uidDocRef, mergedProfile);
+
+      // Eliminamos el documento temporal que creó el admin para no tener duplicados
+      if (adminDoc.id !== user.uid) {
+        await deleteDoc(doc(db, "users", adminDoc.id));
+      }
+
+      return mergedProfile;
+    }
+
+    // 3. Si no existe ni el UID ni pre-registro del Admin, es un ESTUDIANTE NUEVO
+    const isMasterAdmin = emailLower === "luisramirezescalante1985@gmail.com";
+    const finalRole = isMasterAdmin ? "admin" : assignedRoleFallback;
+
+    const newProfile: UserProfile = {
+      id: user.uid,
+      name: customName || user.displayName || "Usuario Nuevo",
+      email: emailLower,
+      role: finalRole,
+      avatar: user.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${emailLower}`,
       academicId: `INTECA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       joinedDate: new Date().toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }),
       progress: 0,
@@ -49,8 +100,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       averageGrade: 0,
       suspended: false
     };
+
+    await setDoc(uidDocRef, newProfile);
+    return newProfile;
   };
 
+  // ==========================================
+  // MFA Y LÓGICA DE AUTENTICACIÓN
+  // ==========================================
   const handleMfaRequired = async (mfaError: any) => {
     try {
       const resolver = getMultiFactorResolver(auth, mfaError);
@@ -97,18 +154,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
-        const isMasterAdmin = email.toLowerCase() === "luisramirezescalante1985@gmail.com";
-        const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
-
-        const newUser = generateSafeProfile(
-          userCredential.user.uid, 
-          `${firstName} ${lastName}`.trim(), 
-          email, 
-          assignedRole
+        // Usamos el interceptor para crear o enlazar la cuenta
+        const finalProfile = await linkOrGenerateProfile(
+          userCredential.user, 
+          "student", 
+          `${firstName} ${lastName}`.trim()
         );
-
-        await setDoc(doc(db, "users", userCredential.user.uid), newUser);
-        onAuthSuccess(newUser);
+        
+        onAuthSuccess(finalProfile);
       }
     } catch (err: any) {
       console.error(err);
@@ -152,7 +205,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     }
   };
 
-  // INTERCEPTOR DE GOOGLE RESTAURADO
   const handleGoogleSignIn = async (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
     setLoading(true);
@@ -162,8 +214,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       let result;
 
       if (Capacitor.isNativePlatform()) {
-        // RESTAURADO: Esta inicialización es OBLIGATORIA en el código.
-        // Evita el NullPointerException nativo que cierra la app.
         GoogleAuth.initialize({
           clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
           scopes: ['profile', 'email'],
@@ -186,23 +236,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       }
 
       if (result && result.user) {
-        const userDoc = await getDoc(doc(db, "users", result.user.uid));
-        if (userDoc.exists()) {
-          onAuthSuccess(userDoc.data() as UserProfile);
-        } else {
-          const isMasterAdmin = result.user.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
-          const assignedRole: UserRole = isMasterAdmin ? "admin" : "student";
-
-          const newUser = generateSafeProfile(
-            result.user.uid,
-            result.user.displayName || "Usuario de Google",
-            result.user.email || "",
-            assignedRole
-          );
-          if (result.user.photoURL) newUser.avatar = result.user.photoURL;
-          await setDoc(doc(db, "users", result.user.uid), newUser);
-          onAuthSuccess(newUser);
-        }
+        // En lugar de sobreescribir, usamos el interceptor inteligente
+        const finalProfile = await linkOrGenerateProfile(result.user, "student");
+        onAuthSuccess(finalProfile);
       }
     } catch (err: any) {
       console.error("GOOGLE AUTH ERROR:", err);

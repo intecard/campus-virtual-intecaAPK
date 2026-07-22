@@ -149,36 +149,6 @@ export default function App() {
     }
   };
 
-  const handleGradeHomework = async (courseId: string, taskTitle: string, submittedText: string) => {
-    try {
-      const res = await fetch("/api/homework/grade", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          studentName: currentUser?.name || "Estudiante",
-          taskTitle,
-          submittedText
-        })
-      });
-      const data = await res.json();
-      
-      if (currentUser) {
-        await logUserActivity(
-          currentUser.id,
-          currentUser.name,
-          currentUser.email,
-          currentUser.role,
-          "AI_GRADING",
-          `Entregó tarea "${taskTitle}" para evaluación inmediata de IA (Puntaje obtenido: ${data.feedback?.score || 0}/100)`
-        );
-      }
-      return data;
-    } catch (err) {
-      console.error("Failed to fetch homework grading:", err);
-      throw err;
-    }
-  };
-
   const handleLogout = async () => {
     if (!currentUser) return;
     try {
@@ -229,7 +199,7 @@ export default function App() {
         />
       )}
 
-      {/* Menú lateral liberado de su div contenedor para usar sus propias animaciones y recibiendo el estado isOpen */}
+      {/* Menú lateral */}
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab}
@@ -239,7 +209,7 @@ export default function App() {
         isOpen={sidebarOpen}
       />
 
-      {/* Main Content Area: Se le agregó lg:ml-72 para que en PC deje el espacio del Sidebar y no quede por debajo */}
+      {/* Main Content Area */}
       <main id="main-content-container" className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative flex flex-col justify-between lg:ml-72 transition-all duration-300">
         
         {/* Persistent Top Header */}
@@ -320,7 +290,7 @@ export default function App() {
               currentUser={currentUser} 
               courses={courses} 
               setActiveTab={setActiveTab}
-              onGradeHomework={handleGradeHomework}
+              // Hemos eliminado onGradeHomework porque la vista de cursos ahora es independiente y usa Firebase directamente
             />
           )}
 
@@ -348,7 +318,6 @@ export default function App() {
             <SettingsView 
               currentUser={currentUser} 
               onChangeProfile={handleUpdateProfile}
-              // El rol ya no se puede cambiar desde la configuración
             />
           )}
         </div>
