@@ -3,7 +3,6 @@ import {
   FolderClosed, 
   Upload, 
   FileText, 
-  FileDown, 
   Eye, 
   Clock, 
   Cloud,
@@ -23,7 +22,7 @@ import { ref, getDownloadURL, deleteObject, uploadBytesResumable } from "firebas
 import { UserProfile } from "../types";
 
 interface FilesViewProps {
-  currentUser: UserProfile;
+  currentUser?: UserProfile; // Se hace opcional para evitar el crash
 }
 
 export interface RealCloudFile {
@@ -56,10 +55,10 @@ export default function FilesView({ currentUser }: FilesViewProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Lógica de Roles
-  const isMaster = currentUser.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
-  const isAdmin = currentUser.role === 'admin' || isMaster;
-  const isTeacher = currentUser.role === 'teacher';
+  // Lógica de Roles blindada con '?.' para evitar el pantallazo rojo
+  const isMaster = currentUser?.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+  const isAdmin = currentUser?.role === 'admin' || isMaster;
+  const isTeacher = currentUser?.role === 'teacher';
 
   // 1. CARGAR ARCHIVOS EN TIEMPO REAL DESDE FIREBASE (CON FILTRO DE ROLES)
   useEffect(() => {
@@ -72,7 +71,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
 
       // REGLA DE SEGURIDAD: Si no es admin, solo ve sus propios archivos
       if (!isAdmin) {
-        loadedFiles = loadedFiles.filter(f => f.uploaderId === currentUser.id);
+        loadedFiles = loadedFiles.filter(f => f.uploaderId === currentUser?.id);
       }
 
       setFiles(loadedFiles);
@@ -80,14 +79,14 @@ export default function FilesView({ currentUser }: FilesViewProps) {
     });
 
     return () => unsubscribe();
-  }, [currentUser, isAdmin]);
+  }, [currentUser?.id, isAdmin]);
 
   const filteredFiles = activeDrive === 'All' ? files : files.filter(f => f.source === activeDrive);
 
   // 2. SUBIR NUEVO ARCHIVO FÍSICO A FIREBASE STORAGE (CON BARRA DE PROGRESO)
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile) return;
+    if (!selectedFile || !currentUser) return;
     
     setUploading(true);
     setUploadProgress(0);
@@ -167,6 +166,8 @@ export default function FilesView({ currentUser }: FilesViewProps) {
   // 3. ELIMINAR ARCHIVO (CONTROL DE ROLES)
   const handleDelete = async (file: RealCloudFile, e: React.MouseEvent) => {
     e.stopPropagation();
+
+    if (!currentUser) return;
 
     // Seguridad: Admin borra todo. Prof/Estudiante solo borran lo suyo.
     if (!isAdmin && file.uploaderId !== currentUser.id) {
@@ -274,6 +275,16 @@ export default function FilesView({ currentUser }: FilesViewProps) {
       uploadText: "Subir Archivo de Tarea"
     };
   };
+
+  // PREVENCIÓN DE CRASH: Si el usuario no ha cargado, mostramos una pequeña pantalla de carga
+  if (!currentUser) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+        <span className="ml-3 text-slate-500 font-medium">Sincronizando perfil seguro...</span>
+      </div>
+    );
+  }
 
   const headers = getViewHeaders();
 

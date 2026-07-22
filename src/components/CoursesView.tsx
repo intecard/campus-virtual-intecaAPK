@@ -5,17 +5,17 @@ import {
   Link as LinkIcon, X, Box, UploadCloud, FolderArchive, Layers, CheckSquare, Users, UserCheck
 } from "lucide-react";
 import { Course, UserProfile, QuizQuestion } from "../types";
-import { db } from "../firebase";
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs } from "firebase/firestore";
+import { db, logUserActivity } from "../firebase";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp } from "firebase/firestore";
 
 interface CoursesViewProps {
-  currentUser: UserProfile;
-  courses: Course[];
+  currentUser?: UserProfile; // Se hace opcional para evitar crash si demora en cargar
+  courses?: Course[];
   setActiveTab: (tab: string) => void;
   onGradeHomework?: (courseId: string, taskTitle: string, submissionText: string) => Promise<any>;
 }
 
-export default function CoursesView({ currentUser, courses, setActiveTab, onGradeHomework }: CoursesViewProps) {
+export default function CoursesView({ currentUser, courses = [], setActiveTab, onGradeHomework }: CoursesViewProps) {
   
   // ==========================================
   // ESTADOS DE NAVEGACIÓN Y VISTAS
@@ -32,18 +32,19 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   
+  // BLINDAJE ANTI-CRASH: Usamos '?.' para que no explote si currentUser viene vacío un instante
+  const isMaster = currentUser?.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
+  const isAdmin = currentUser?.role === 'admin' || isMaster;
+
   const [courseForm, setCourseForm] = useState<Partial<Course> & any>({
     title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
-    level: "Técnico", teacher: currentUser.name, teacherId: "", image: "", format: "native",
+    level: "Técnico", teacher: currentUser?.name || "Profesor Titular", teacherId: currentUser?.id || "", image: "", format: "native",
     enrolledStudents: [], modules: []
   });
 
-  const isMaster = currentUser.email?.toLowerCase() === "luisramirezescalante1985@gmail.com";
-  const isAdmin = currentUser.role === 'admin' || isMaster;
-
   // Cargar lista de usuarios para matriculación y asignación docente
   useEffect(() => {
-    if (isAdmin || currentUser.role === 'teacher') {
+    if (isAdmin || currentUser?.role === 'teacher') {
       const fetchUsers = async () => {
         try {
           const uSnap = await getDocs(collection(db, "users"));
@@ -56,7 +57,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
       };
       fetchUsers();
     }
-  }, [currentUser, isAdmin]);
+  }, [currentUser?.role, isAdmin]);
 
   // ==========================================
   // ESTADOS DE EXÁMENES IA Y TAREAS
@@ -91,7 +92,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
     } else {
       setCourseForm({
         title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
-        level: "Técnico", teacher: currentUser.name, teacherId: "", image: "", format: "native",
+        level: "Técnico", teacher: currentUser?.name || "Profesor Titular", teacherId: currentUser?.id || "", image: "", format: "native",
         enrolledStudents: [], modules: []
       });
     }
@@ -149,10 +150,20 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
         await addDoc(collection(db, "courses"), {
           ...courseForm,
           progress: 0,
-          studentsCount: courseForm.enrolledStudents.length
+          studentsCount: courseForm.enrolledStudents.length,
+          createdAt: serverTimestamp()
         });
         alert("¡Curso creado y publicado en la plataforma INTECA!");
       }
+
+      if (typeof logUserActivity === 'function' && currentUser) {
+        await logUserActivity(
+          currentUser.id, currentUser.name, currentUser.email, currentUser.role,
+          courseForm.id ? "COURSE_UPDATE" : "COURSE_CREATE", 
+          `${courseForm.id ? 'Actualizó' : 'Creó'} el curso: ${courseForm.title}`
+        );
+      }
+
       setViewMode('catalog');
     } catch (error) {
       console.error("Error guardando curso:", error);
@@ -261,12 +272,22 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
     }
   };
 
+  // Prevenir renderizado si el usuario no ha cargado para evitar crasheos visuales
+  if (!currentUser) {
+    return (
+      <div className="flex justify-center items-center py-20">
+        <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+        <span className="ml-3 text-slate-500 font-medium">Sincronizando perfil seguro...</span>
+      </div>
+    );
+  }
+
   // ==========================================
   // RENDER 1: CATÁLOGO PRINCIPAL
   // ==========================================
   const renderCatalog = () => {
     // Filtrar cursos si el usuario es estudiante
-    const displayCourses = isAdmin ? courses : courses.filter((c: any) => c.enrolledStudents?.includes(currentUser.id));
+    const displayCourses = isAdmin ? courses : courses.filter((c: any) => c.enrolledStudents?.includes(currentUser?.id));
 
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -276,7 +297,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
             <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Cursos (LMS)</h1>
           </div>
           
-          {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+          {(isAdmin || currentUser?.role === 'teacher') && (
             <button 
               onClick={() => openStudio()}
               className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
@@ -308,7 +329,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                   setViewMode('detail');
                 }}
               >
-                {(currentUser.role === 'admin' || currentUser.name === course.teacher) && (
+                {(isAdmin || currentUser?.name === course.teacher) && (
                   <button 
                     onClick={(e) => { e.stopPropagation(); openStudio(course); }}
                     className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 hover:bg-white transition-all"
@@ -600,7 +621,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                  <p className="leading-relaxed">Basado en las competencias desarrolladas durante el programa académico de <strong>{typedCourse.title}</strong>, redacte un análisis exhaustivo explicando cómo aplicaría usted los conocimientos de nivel {typedCourse.level} en su entorno profesional diario.</p>
                </div>
      
-               {currentUser.role === 'student' && !homeworkGradedResult && (
+               {currentUser?.role === 'student' && !homeworkGradedResult && (
                  <div className="space-y-4">
                    <div>
                      <label className="block text-xs font-bold text-slate-700 mb-2">Entregar Propuesta / Ensayo Académico:</label>
@@ -747,7 +768,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
         <div>
           <span className="text-emerald-400 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-2">
             Modo Arquitecto de Cursos
-            {isMaster && <span className="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[9px] tracking-widest shadow-sm">MASTER ADMIN</span>}
+            {isAdmin && <span className="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[9px] tracking-widest shadow-sm">MASTER ADMIN</span>}
           </span>
           <h2 className="text-2xl font-bold font-display mt-1">{courseForm.id ? "Editar Programa Académico" : "Construir Nuevo Programa"}</h2>
         </div>
@@ -807,7 +828,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                 >
                   <option value="">-- Asignar Docente --</option>
                   {teachers.map(t => (
-                    <option key={t.id} value={t.id}>{t.name} ({t.email})</option>
+                    <option key={t.id} value={t.id}>{t?.name} ({t?.email || 'Sin correo'})</option>
                   ))}
                 </select>
               </div>
@@ -839,7 +860,7 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
               </div>
             </div>
 
-            {courseForm.id && currentUser.role === 'admin' && (
+            {courseForm.id && isAdmin && (
                <button onClick={() => deleteCourse(courseForm.id as string)} className="w-full mt-6 flex items-center justify-center gap-2 py-3 border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition-all">
                  <Trash2 className="w-4 h-4"/> Eliminar Curso Definitivamente
                </button>
@@ -1003,8 +1024,8 @@ export default function CoursesView({ currentUser, courses, setActiveTab, onGrad
                     <div className="flex items-center gap-2.5">
                       <img src={student.avatar} alt="" className="w-7 h-7 rounded-full bg-slate-200" />
                       <div>
-                        <p className="text-xs font-bold text-slate-800 leading-none">{student.name}</p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">{student.academicId || student.email}</p>
+                        <p className="text-xs font-bold text-slate-800 leading-none">{student?.name}</p>
+                        <p className="text-[9px] text-slate-400 mt-0.5">{student?.academicId || student?.email || 'Sin datos'}</p>
                       </div>
                     </div>
                     {isEnrolled && <UserCheck className="w-4 h-4 text-sky-600" />}
