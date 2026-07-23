@@ -51,7 +51,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
 
-  // Estados para subir nueva grabación
   const [uploadingRecord, setUploadingRecord] = useState(false);
   const [newRecordTitle, setNewRecordTitle] = useState("");
   const [newRecordUrl, setNewRecordUrl] = useState("");
@@ -59,14 +58,13 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // ==========================================
-  // ESTADOS DE LA PIZARRA VIRTUAL
+  // ESTADOS DE LA PIZARRA VIRTUAL TÁCTIL
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState('#10b981'); 
   const [brushSize, setBrushSize] = useState(4);
 
-  // 1. CARGAR GRABACIONES GLOBALES DESDE FIREBASE
   useEffect(() => {
     const q = query(collection(db, "class_recordings"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -78,7 +76,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // 2. CARGAR CHAT DE LA SALA ACTUAL EN TIEMPO REAL
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
@@ -93,8 +90,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, [isInRoom, roomCode]);
 
   // ==========================================
-  // FUNCIONES DE LA SALA
+  // 🛡️ TRUCO MÓVIL: SOLICITUD DE PERMISOS NATIVOS
   // ==========================================
+  const triggerPermissionsAndJoin = async (code: string) => {
+    try {
+      // Invocamos a la cámara y micrófono del sistema ANTES de abrir el iframe.
+      // Esto fuerza a Android/iOS a mostrar el diálogo de permisos al usuario.
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // Apagamos el stream temporal enseguida, el iframe se encargará del resto.
+      stream.getTracks().forEach(track => track.stop());
+    } catch (err) {
+      console.warn("Permisos denegados o hardware no detectado:", err);
+      // Continuamos de todos modos por si el usuario está en PC y los otorgó previamente
+    }
+    setRoomCode(code);
+    setIsInRoom(true);
+  };
+
   const joinRoom = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const code = roomCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -102,14 +114,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       alert("Ingresa un código de sala válido.");
       return;
     }
-    setRoomCode(code);
-    setIsInRoom(true);
+    triggerPermissionsAndJoin(code);
   };
 
   const createNewRoom = () => {
     const newCode = Math.random().toString(36).substring(2, 8);
-    setRoomCode(newCode);
-    setIsInRoom(true);
+    triggerPermissionsAndJoin(newCode);
   };
 
   const leaveRoom = () => {
@@ -177,7 +187,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // FUNCIONES DE PIZARRA
+  // FUNCIONES DE PIZARRA (CON MOTOR MÓVIL)
   // ==========================================
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
@@ -192,14 +202,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
   }, [activeTab]);
 
+  const getCoordinates = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = getCoordinates(e.clientX, e.clientY);
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.strokeStyle = brushColor;
@@ -210,12 +229,33 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const { x, y } = getCoordinates(e.clientX, e.clientY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const startDrawingTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    const touch = e.touches[0];
+    const { x, y } = getCoordinates(touch.clientX, touch.clientY);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.strokeStyle = brushColor;
+    ctx.lineWidth = brushSize;
+    setIsDrawing(true);
+  };
+
+  const drawTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!ctx) return;
+    const touch = e.touches[0];
+    const { x, y } = getCoordinates(touch.clientX, touch.clientY);
     ctx.lineTo(x, y);
     ctx.stroke();
   };
@@ -230,7 +270,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
-
 
   // ==========================================
   // RENDER 1: LOBBY (FUERA DE LLAMADA)
@@ -247,36 +286,44 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Unirse o Crear Sala */}
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
             <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4">
               <Video className="w-8 h-8" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
-              <p className="text-sm text-slate-500 mt-1">Ingresa el código proporcionado por tu profesor o crea una nueva sala instantánea.</p>
-            </div>
 
-            <form onSubmit={joinRoom} className="space-y-4 pt-4 border-t border-slate-100">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    value={roomCode}
-                    onChange={(e) => setRoomCode(e.target.value)}
-                    placeholder="Ej. farma101"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  />
-                  <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
-                    Unirse
-                  </button>
+            {currentUser.role !== 'teacher' ? (
+              <>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
+                  <p className="text-sm text-slate-500 mt-1">Ingresa el código proporcionado por tu profesor o crea una nueva sala instantánea.</p>
                 </div>
+                <form onSubmit={joinRoom} className="space-y-4 pt-4 border-t border-slate-100">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={roomCode}
+                        onChange={(e) => setRoomCode(e.target.value)}
+                        placeholder="Ej. farma101"
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                      <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
+                        Unirse
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </>
+            ) : (
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Transmitir una Clase</h2>
+                <p className="text-sm text-slate-500 mt-1">Como profesor titular, inicia una nueva sala en vivo instantánea y comparte el código con tus alumnos para que ingresen.</p>
               </div>
-            </form>
+            )}
 
             {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
-              <div className="pt-4 border-t border-slate-100">
+              <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100" : "pt-2"}>
                 <button 
                   onClick={createNewRoom}
                   className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
@@ -287,14 +334,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             )}
           </div>
 
-          {/* Repositorio de Grabaciones */}
           <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <Tv className="w-5 h-5 text-emerald-500" /> Archivo de Grabaciones
               </h2>
             </div>
-
             <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none">
               {loadingRecordings ? (
                 <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
@@ -323,7 +368,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       >
                         <Play className="w-3 h-3" /> Ver Grabación
                       </a>
-                      
                       {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
                         <button 
                           onClick={() => handleDeleteRecording(rec.id)}
@@ -345,55 +389,50 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA (LLAMADA Y HERRAMIENTAS)
+  // RENDER 2: SALA ACTIVA (DISEÑO MÓVIL ÓPTIMO)
   // ==========================================
   return (
-    <div id="virtual-classroom-active" className="space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-120px)] flex flex-col">
+    <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
+      
       {/* Header de la Sala Activa */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 p-4 rounded-2xl text-white shadow-lg shrink-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-900 p-4 rounded-2xl text-white shadow-lg shrink-0">
         <div>
           <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             En Transmisión • Sala Segura
           </span>
-          <h1 className="text-xl font-display font-bold text-white mt-0.5">Clase en Vivo</h1>
+          <h1 className="text-lg md:text-xl font-display font-bold text-white mt-0.5">Clase en Vivo</h1>
         </div>
         
-        <div className="flex items-center gap-4 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto">
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold flex-1 md:flex-none text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
           <button 
             onClick={leaveRoom}
-            className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
+            className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-3 md:px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
           >
             <LogOut className="w-4 h-4" />
-            <span className="hidden md:inline">Salir de la Clase</span>
+            <span className="hidden sm:inline">Salir de la Clase</span>
           </button>
         </div>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
-        {/* ÁREA DE VIDEO (INTEGRACIÓN JITSI MEET) */}
-        <div className="lg:w-2/3 bg-black rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col relative h-[50vh] lg:h-auto shrink-0 lg:shrink">
-          
-          {/* El motor de WebRTC de Jitsi incrustado. 
-              Maneja cámara, micro, pantalla compartida y red de forma profesional. 
-              Permisos agregados para despliegues móviles y web. */}
+        {/* ÁREA DE VIDEO - JITSI INTEGRADO */}
+        <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false`}
+            // 🚀 EL SECRETO ESTÁ AQUÍ: Servidor público Jitsi (meet.ffmuc.net) que NO pide login jamás.
+            src={`https://meet.ffmuc.net/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false`}
             className="w-full h-full border-0 absolute inset-0"
             title="Video Classroom INTECA"
           />
-
         </div>
 
-        {/* ÁREA DE HERRAMIENTAS (CHAT, PIZARRA, GRABACIONES) */}
-        <div className="lg:w-1/3 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col h-[50vh] lg:h-auto overflow-hidden">
-          
-          {/* Tabs de Herramientas */}
+        {/* ÁREA DE HERRAMIENTAS */}
+        <div className="w-full lg:w-1/3 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex flex-col flex-1 min-h-[40vh] overflow-hidden">
           <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1 shrink-0">
             <button
               onClick={() => setActiveTab('chat')}
@@ -415,11 +454,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             </button>
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto relative bg-slate-50/30">
+          <div className="flex-1 p-3 md:p-4 overflow-y-auto relative bg-slate-50/30">
             
-            {/* PESTAÑA: CHAT (FIREBASE REALTIME) */}
             {activeTab === 'chat' && (
-              <div className="flex flex-col h-full absolute inset-0 p-4">
+              <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4">
                 <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none pb-4">
                   {chatMessages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 opacity-60">
@@ -436,7 +474,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                             <span className="font-bold text-[11px] text-slate-700">{msg.senderName}</span>
                             <span className="text-[9px] text-slate-400">{msg.timeString}</span>
                           </div>
-                          <div className={`p-2.5 rounded-2xl text-xs leading-relaxed max-w-[85%] ${isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
+                          <div className={`p-2.5 rounded-2xl text-xs leading-relaxed max-w-[85%] break-words ${isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none shadow-sm'}`}>
                             {msg.text}
                           </div>
                         </div>
@@ -446,18 +484,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <div ref={chatEndRef} />
                 </div>
 
-                <form onSubmit={handleSendMessage} className="flex gap-2 pt-3 border-t border-slate-200 shrink-0 bg-white p-1 rounded-xl">
+                <form onSubmit={handleSendMessage} className="flex gap-2 pt-2 md:pt-3 border-t border-slate-200 shrink-0 bg-white p-1 rounded-xl">
                   <input
                     type="text"
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    placeholder="Mensaje a todos..."
-                    className="flex-1 bg-transparent border-none px-3 text-xs focus:outline-none focus:ring-0 text-slate-800"
+                    placeholder="Escribe y envía emojis..."
+                    className="flex-1 bg-transparent border-none px-3 py-1 text-sm focus:outline-none focus:ring-0 text-slate-800"
                   />
                   <button
                     type="submit"
                     disabled={!newMessage.trim()}
-                    className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white p-2 rounded-lg transition-all shadow-sm"
+                    className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white p-2.5 rounded-lg transition-all shadow-sm flex items-center justify-center"
                   >
                     <MessageSquare className="w-4 h-4" />
                   </button>
@@ -465,9 +503,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {/* PESTAÑA: PIZARRA DIGITAL */}
             {activeTab === 'whiteboard' && (
-              <div className="flex flex-col h-full space-y-4 justify-between absolute inset-0 p-4">
+              <div className="flex flex-col h-full space-y-3 justify-between absolute inset-0 p-3 md:p-4">
                 <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0">
                   <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider pl-2">Pizarra Local</span>
                   <button
@@ -481,18 +518,22 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative">
                   <canvas
                     ref={canvasRef}
-                    width={400}
-                    height={400}
+                    width={800}
+                    height={800}
                     onMouseDown={startDrawing}
                     onMouseMove={draw}
                     onMouseUp={stopDrawing}
                     onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawingTouch}
+                    onTouchMove={drawTouch}
+                    onTouchEnd={stopDrawing}
+                    onTouchCancel={stopDrawing}
                     className="cursor-crosshair w-full h-full touch-none"
                     style={{ width: '100%', height: '100%' }}
                   />
                 </div>
 
-                <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm shrink-0">
+                <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2">
                     {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
                       <button
@@ -503,25 +544,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       />
                     ))}
                   </div>
-
-                  <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg">
-                    <Palette className="w-3.5 h-3.5 text-slate-400" />
+                  <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg w-full sm:w-auto">
+                    <Palette className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <input
                       type="range"
                       min={1}
                       max={12}
                       value={brushSize}
                       onChange={(e) => setBrushSize(Number(e.target.value))}
-                      className="w-16 accent-emerald-500 cursor-pointer"
+                      className="w-full sm:w-16 accent-emerald-500 cursor-pointer"
                     />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* PESTAÑA: GUARDAR GRABACIÓN */}
             {activeTab === 'recordings' && (
-              <div className="flex flex-col h-full absolute inset-0 p-4 space-y-4">
+              <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-2 shrink-0">
                   <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
                     <Tv className="w-4 h-4" /> Guardar Clase Grabada
@@ -530,7 +569,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     Si grabaste la sesión usando tu software nativo o Drive, pega el enlace aquí para que los alumnos de esta sala puedan repasarla en el archivo general.
                   </p>
                 </div>
-
                 <form onSubmit={handleUploadRecording} className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Título de la Clase</label>
@@ -544,7 +582,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Enlace del Video (Drive/YouTube)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Enlace del Video</label>
                     <div className="relative">
                       <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
                       <input 
@@ -568,10 +606,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 </form>
               </div>
             )}
-
           </div>
         </div>
-
       </div>
     </div>
   );

@@ -340,7 +340,7 @@ export default function App() {
           )}
 
           {activeTab === 'analytics' && (
-            <AnalyticsView />
+            <AnalyticsView currentUser={currentUser} />
           )}
 
           {activeTab === 'files' && (

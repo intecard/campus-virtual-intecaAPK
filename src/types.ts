@@ -15,6 +15,7 @@ export interface UserProfile {
   progress?: number;
   attendanceRate?: number;
   averageGrade?: number;
+  riskScore?: number; // <-- AÑADIDO PARA LA CONSOLA ANALÍTICA
   aiProfile?: {
     performance: string;
     behavior: string;
