@@ -1,4 +1,6 @@
 # Secretos y Entorno
+.env
+.env.*
 !.env.example
 
 # Dependencias (Nunca se deben subir a GitHub)

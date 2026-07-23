@@ -379,11 +379,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="lg:w-2/3 bg-black rounded-3xl overflow-hidden border border-slate-800 shadow-2xl flex flex-col relative h-[50vh] lg:h-auto shrink-0 lg:shrink">
           
           {/* El motor de WebRTC de Jitsi incrustado. 
-              Esto maneja cámara, micro, pantalla compartida y red de forma profesional. */}
+              Maneja cámara, micro, pantalla compartida y red de forma profesional. 
+              Permisos agregados para despliegues móviles y web. */}
           <iframe
-            allow="camera; microphone; display-capture; autoplay; clipboard-write"
-            src={`https://meet.jit.si/inteca_live_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true`}
-            className="w-full h-full border-0"
+            allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
+            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false`}
+            className="w-full h-full border-0 absolute inset-0"
             title="Video Classroom INTECA"
           />
 

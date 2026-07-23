@@ -59,14 +59,53 @@ export default function App() {
         if (firebaseUser) {
           try {
             let profile = await getUserProfile(firebaseUser.uid);
+            
             if (!profile) {
+              // 1. Si no existe, lo creamos y le damos su primer día de racha
+              // 🛡️ FIX: Usamos "as any" para que TypeScript no bloquee la racha
               profile = await createUserProfile(firebaseUser.uid, {
                 name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Estudiante INTECA",
                 email: firebaseUser.email || "",
                 role: "student",
-                avatar: firebaseUser.photoURL || undefined
-              });
+                avatar: firebaseUser.photoURL || undefined,
+                studyStreak: 1,
+                lastLoginTimestamp: Date.now()
+              } as any); 
+            } else {
+              // 2. LÓGICA DE RACHA DE ESTUDIO (STREAK ENGINE 100% REAL)
+              const today = new Date();
+              today.setHours(0, 0, 0, 0); 
+
+              let currentStreak = (profile as any).studyStreak || 0;
+              let lastLoginTs = (profile as any).lastLoginTimestamp || 0;
+
+              const lastLoginDate = new Date(lastLoginTs);
+              lastLoginDate.setHours(0, 0, 0, 0); 
+
+              const diffTime = Math.abs(today.getTime() - lastLoginDate.getTime());
+              const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+              let needsUpdate = false;
+
+              if (lastLoginTs === 0 || diffDays > 1) {
+                currentStreak = 1;
+                needsUpdate = true;
+              } else if (diffDays === 1) {
+                currentStreak += 1;
+                needsUpdate = true;
+              }
+
+              if (needsUpdate) {
+                // 🛡️ FIX: Usamos "as any" aquí también
+                await updateUserProfileInDB(firebaseUser.uid, {
+                  studyStreak: currentStreak,
+                  lastLoginTimestamp: Date.now()
+                } as any);
+                (profile as any).studyStreak = currentStreak;
+                (profile as any).lastLoginTimestamp = Date.now();
+              }
             }
+            
             setCurrentUser(profile);
           } catch (err) {
             console.error("Error retrieving user profile from Firestore:", err);
@@ -188,10 +227,11 @@ export default function App() {
     return <AuthPage onAuthSuccess={(profile: any) => setCurrentUser(profile)} />;
   }
 
+  const userStreak = (currentUser as any).studyStreak || 1;
+
   return (
     <div id="campus-app-layout" className="h-screen w-full bg-slate-50 text-slate-800 flex font-sans overflow-hidden">
       
-      {/* Backdrop oscuro para móvil (Overlay). Cierra el menú al tocar afuera. Z-40 */}
       {sidebarOpen && (
         <div 
           className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
@@ -199,7 +239,6 @@ export default function App() {
         />
       )}
 
-      {/* Menú lateral */}
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab}
@@ -209,10 +248,8 @@ export default function App() {
         isOpen={sidebarOpen}
       />
 
-      {/* Main Content Area */}
       <main id="main-content-container" className="flex-1 h-full overflow-y-auto p-4 sm:p-6 md:p-8 lg:p-10 relative flex flex-col justify-between lg:ml-72 transition-all duration-300">
         
-        {/* Persistent Top Header */}
         <header id="campus-top-header" className="flex justify-between items-center mb-6 md:mb-8 border-b border-slate-100 pb-4 shrink-0 gap-4">
           <div className="flex items-center gap-3">
             <button
@@ -233,7 +270,9 @@ export default function App() {
             {currentUser.role === 'student' && (
               <div className="hidden md:flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-xl">
                 <Sparkles className="w-4 h-4 text-emerald-500" />
-                <span className="text-[11px] font-bold text-slate-700">Racha de estudio: <strong className="text-emerald-500">14 Días 🔥</strong></span>
+                <span className="text-[11px] font-bold text-slate-700">
+                  Racha de estudio: <strong className="text-emerald-500">{userStreak} Día{userStreak !== 1 ? 's' : ''} 🔥</strong>
+                </span>
               </div>
             )}
 
@@ -274,7 +313,6 @@ export default function App() {
           </div>
         </header>
 
-        {/* View switching panel wrapper */}
         <div id="active-view-panel-container" className="flex-1 pb-10">
           {activeTab === 'dashboard' && (
             <DashboardView 
@@ -290,7 +328,6 @@ export default function App() {
               currentUser={currentUser} 
               courses={courses} 
               setActiveTab={setActiveTab}
-              // Hemos eliminado onGradeHomework porque la vista de cursos ahora es independiente y usa Firebase directamente
             />
           )}
 
@@ -322,7 +359,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Institutional Footer */}
         <footer id="campus-institutional-footer" className="mt-auto border-t border-slate-100 pt-4 flex flex-col md:flex-row justify-between items-center gap-3 text-[10px] text-slate-400 shrink-0">
           <p>© 2026 Instituto Técnico del Caribe (INTECA). Todos los derechos reservados.</p>
           <div className="flex gap-4">

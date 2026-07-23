@@ -48,8 +48,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     const q = query(chatCollectionRef, orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const loadedMessages: Message[] = [];
-      snapshot.forEach((doc) => {
-        loadedMessages.push({ id: doc.id, ...doc.data() } as Message);
+      snapshot.forEach((docSnap) => {
+        loadedMessages.push({ id: docSnap.id, ...docSnap.data() } as Message);
       });
       setMessages(loadedMessages);
     });
@@ -62,12 +62,12 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   }, [messages, isTyping]);
 
   // ==========================================
-  // 2. ENVIAR MENSAJE (Usuario -> Firebase -> IA Backend)
+  // 2. ENVIAR MENSAJE (Usuario -> Firebase -> GEMINI AI REAL)
   // ==========================================
   const handleSendMessage = async (text: string = inputMessage) => {
     if (!text.trim()) return;
 
-    const userText = text;
+    const userText = text.trim();
     setInputMessage(""); // Limpiar la caja de texto rápido
     setIsTyping(true);
 
@@ -83,45 +83,54 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       console.error("Error guardando mensaje de usuario:", error);
     }
 
-    // B. Consultar a la API de la Inteligencia Artificial Real
+    // B. Consultar a la API REAL de Google Gemini
     try {
-      // Aquí el sistema intentará contactar a tu servidor real
-      const response = await fetch("/api/ai/tutor", {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+
+      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey === "") {
+        throw new Error("API_KEY_MISSING");
+      }
+
+      // 🧠 INSTRUCCIÓN SECRETA PARA LA IA (System Prompt)
+      const promptText = `Eres el Tutor de Inteligencia Artificial oficial de INTECA (Instituto Técnico del Caribe). Tu objetivo es brindar información de manera clara, precisa, con información médica, tecnológica y científica real y verídica. Responde a esta consulta del estudiante ${currentUser.name}: "${userText}"`;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: userText, studentName: currentUser.name })
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }]
+        })
       });
-      
+
+      if (!response.ok) throw new Error("Error en la conexión con el servidor de la IA.");
+
       const data = await response.json();
+      const aiReply = data.candidates[0].content.parts[0].text;
       
       // Guardar la respuesta real de la IA en Firebase
-      if (data.reply) {
-        await addDoc(chatCollectionRef, {
-          sender: "ai",
-          text: data.reply,
-          timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          timestamp: Date.now()
-        });
-      }
-    } catch (error) {
-      // C. Salvavidas (Fallback): Si tu servidor /api/ai/tutor aún no está programado,
-      // la aplicación simulará una respuesta técnica inteligente en vez de crashear.
-      setTimeout(async () => {
-        let fallbackReply = `He procesado tu consulta sobre "${userText}". Como el motor principal de INTECA Intellect se encuentra procesando otros datos en este momento, guardaré tu pregunta en la libreta de apuntes.`;
-        
-        if (userText.toLowerCase().includes("telemetría")) {
-          fallbackReply = "La telemetría médica en zonas rurales requiere cifrados de baja latencia como AES-128. Esto permite transmitir datos vitales continuos (como un ECG) a la central sin sobrecargar el canal satelital.";
-        } else if (userText.toLowerCase().includes("farmaco")) {
-          fallbackReply = "A nivel farmacocinético, el principio activo requiere de los excipientes correctos para garantizar su biodisponibilidad y absorción en el torrente sanguíneo.";
-        }
+      await addDoc(chatCollectionRef, {
+        sender: "ai",
+        text: aiReply,
+        timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: Date.now()
+      });
 
-        await addDoc(chatCollectionRef, {
-          sender: "ai",
-          text: fallbackReply,
-          timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          timestamp: Date.now()
-        });
-      }, 1500);
+    } catch (error: any) {
+      console.error("Error en Tutor IA:", error);
+      
+      // C. Manejo de Errores
+      let fallbackReply = "Hubo un error de conexión con la red neuronal. Por favor, intenta de nuevo.";
+      
+      if (error.message === "API_KEY_MISSING") {
+        fallbackReply = `[MODO DE CONFIGURACIÓN]: He recibido tu consulta: "${userText}". Para que el tutor funcione al 100% y responda con información real, debes ir al archivo '.env' y colocar una API Key válida de Google Gemini en la variable VITE_GEMINI_API_KEY.`;
+      }
+
+      await addDoc(chatCollectionRef, {
+        sender: "ai",
+        text: fallbackReply,
+        timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: Date.now()
+      });
     } finally {
       setIsTyping(false);
     }
@@ -202,7 +211,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
                 </div>
                 <div className="flex flex-col items-start">
                   <div className="p-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-slate-50 border border-slate-100 text-slate-700 rounded-bl-none">
-                    ¡Hola, {currentUser.name}! La memoria de nuestro chat ha sido inicializada en 0. Soy tu Tutor IA de INTECA y estoy listo para resolver cualquier duda sobre tu pénsum.
+                    ¡Hola, {currentUser.name}! La memoria de nuestro chat ha sido inicializada en 0. Soy tu Tutor IA de INTECA y estoy conectado a servidores de conocimiento para responder cualquier duda técnica o científica con precisión. ¿En qué te ayudo hoy?
                   </div>
                 </div>
               </div>
@@ -225,7 +234,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
                 </div>
 
                 <div className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                  <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.sender === 'user' 
                       ? 'bg-emerald-600 text-white rounded-br-none' 
                       : 'bg-slate-50 border border-slate-100 text-slate-700 rounded-bl-none'
