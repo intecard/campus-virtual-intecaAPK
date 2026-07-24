@@ -40,6 +40,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
 
+  // ESTADOS PARA SUBIDA DE PORTADAS (NUEVO)
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [coverUploadProgress, setCoverUploadProgress] = useState(0);
+
   // ESTADOS PARA SUBIDA DE VIDEOS EN LECCIONES
   const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
   const [lessonUploadProgress, setLessonUploadProgress] = useState<number>(0);
@@ -159,7 +163,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const handleAddLesson = (moduleId: string, type: 'video' | 'pdf' | 'task' = 'video') => {
-    // Ahora las lecciones soportan text/doc (contentUrl) y video (videoUrl) al mismo tiempo
     const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "" };
     setCourseForm((prev: any) => ({
       ...prev,
@@ -168,7 +171,43 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // NUEVO: SUBIDA DE VIDEO DIRECTO AL TEMA (STORAGE)
+  // NUEVO: SUBIDA DE PORTADA (IMAGEN)
+  // ==========================================
+  const handleCoverUpload = async (file: File) => {
+    if (!file) return;
+    setUploadingCover(true);
+    setCoverUploadProgress(0);
+
+    try {
+      const storageRef = ref(storage, `course_covers/${Date.now()}_${file.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setCoverUploadProgress(progress);
+        },
+        (error) => {
+          console.error("Error subiendo portada:", error);
+          alert("Error al subir la imagen.");
+          setUploadingCover(false);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          setCourseForm((prev: any) => ({ ...prev, image: downloadURL }));
+          setUploadingCover(false);
+          setCoverUploadProgress(0);
+        }
+      );
+    } catch (error) {
+      console.error("Error iniciando subida de portada:", error);
+      setUploadingCover(false);
+    }
+  };
+
+  // ==========================================
+  // SUBIDA DE VIDEO DIRECTO AL TEMA (STORAGE)
   // ==========================================
   const handleLessonVideoUpload = async (moduleId: string, lessonId: string, file: File) => {
     if (!file) return;
@@ -193,7 +232,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         async () => {
           const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           
-          // Actualizamos el estado del formulario inyectando la URL en el videoUrl de esta lección
           setCourseForm((prev: any) => {
             const newMods = [...prev.modules];
             const mIndex = newMods.findIndex((m: any) => m.id === moduleId);
@@ -427,7 +465,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   <span className="font-bold text-slate-800 text-xs md:text-sm">{lesson.title}</span>
                                 </div>
                                 
-                                {/* NUEVO: DOBLE BOTÓN PARA LEER Y VER VIDEO */}
                                 <div className="flex flex-wrap gap-2 w-full md:w-auto mt-1 md:mt-0 md:ml-0">
                                   {lesson.contentUrl && (
                                     <a 
@@ -635,9 +672,44 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <textarea rows={3} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none leading-relaxed" />
                 </div>
 
+                {/* AQUÍ ESTÁ LA NUEVA SUBIDA DE PORTADA NATIVA */}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">URL Portada (JPG/PNG)</label>
-                  <input type="text" value={courseForm.image} onChange={e => setCourseForm({...courseForm, image: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none" placeholder="https://..." />
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Portada del Curso</label>
+                  <div className="flex items-center gap-4">
+                    {courseForm.image ? (
+                      <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-200 shrink-0 shadow-sm">
+                        <img src={courseForm.image} alt="Portada" className="w-full h-full object-cover" />
+                        <button 
+                          onClick={() => setCourseForm({...courseForm, image: ""})}
+                          className="absolute top-1 right-1 bg-white/90 backdrop-blur rounded-full p-1 shadow hover:text-rose-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-20 h-20 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+                        <Image className="w-6 h-6" />
+                      </div>
+                    )}
+                    
+                    <div className="flex-1">
+                      <label className={`w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-sm ${uploadingCover ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {uploadingCover ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <UploadCloud className="w-4 h-4 text-emerald-500" />}
+                        {uploadingCover ? `Subiendo ${Math.round(coverUploadProgress)}%` : "Subir Imagen (Galería/PC)"}
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          className="hidden" 
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files[0]) {
+                              handleCoverUpload(e.target.files[0]);
+                            }
+                          }} 
+                        />
+                      </label>
+                      <p className="text-[9px] text-slate-400 mt-1.5 text-center leading-tight">Formatos: JPG, PNG. Al hacer clic se abrirá la galería o archivos.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -720,9 +792,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].title = e.target.value; setCourseForm({...courseForm, modules: nm});
                               }} className="bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs font-bold w-11/12 pb-1" placeholder="Título del Tema"/>
                               
-                              {/* NUEVO: DOBLE INPUT PARA MATERIAL ESCRITO Y VIDEO */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
-                                {/* Entrada Doc/PDF */}
                                 <div>
                                   <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Material Escrito (Doc/PDF)</label>
                                   <input type="text" value={lesson.contentUrl || ""} onChange={(e) => {
@@ -730,7 +800,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   }} className="bg-white border border-slate-200 rounded-lg p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Enlace del documento..."/>
                                 </div>
                                 
-                                {/* Entrada Video Nativo */}
                                 <div>
                                   <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Clase Grabada (Video)</label>
                                   <div className="flex gap-1.5">

@@ -29,14 +29,18 @@ export default function Sidebar({
   isOpen = false 
 }: SidebarProps) {
   
+  // ==========================================
+  // MENÚ DE NAVEGACIÓN (CORRECCIÓN DE ROLES)
+  // ==========================================
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'teacher', 'admin', 'observer'] },
     { id: 'courses', label: 'Mis Cursos', icon: BookOpen, roles: ['student', 'teacher', 'admin', 'observer'] },
-    { id: 'classroom', label: 'Aula Virtual', icon: Video, roles: ['student', 'teacher', 'observer'] },
-    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'observer'] },
+    // ¡AQUÍ ESTABA EL ERROR! El admin no tenía acceso al Aula Virtual ni al Tutor. Ya se lo agregué:
+    { id: 'classroom', label: 'Aula Virtual', icon: Video, roles: ['student', 'teacher', 'admin', 'observer'] },
+    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'admin', 'observer'] },
     { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin', 'observer'] },
     { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin'] },
-    { id: 'admin', label: 'Auditoría y Roles', icon: Settings, roles: ['admin'] }, // <-- Acceso exclusivo a la Consola
+    { id: 'admin', label: 'Auditoría y Roles', icon: Settings, roles: ['admin'] }, 
     { id: 'settings', label: 'Perfil y Config.', icon: Settings, roles: ['student', 'teacher', 'admin', 'observer'] },
   ];
 

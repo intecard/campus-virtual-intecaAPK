@@ -451,8 +451,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA
+  // RENDER 2: SALA ACTIVA (CORRECCIÓN APLICADA AQUÍ)
   // ==========================================
+  // Configuramos la barra de herramientas de Jitsi para OCULTAR el botón de colgar ("hangup")
+  // Esto obliga al usuario a usar el botón nativo de la app "Salir de la Clase"
+  const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","chat","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
       
@@ -482,11 +486,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
-        {/* ÁREA DE VIDEO - JITSI INTEGRADO */}
+        {/* ÁREA DE VIDEO - JITSI INTEGRADO (NUEVA CONFIGURACIÓN) */}
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false`}
+            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0"
             title="Video Classroom INTECA"
           />
@@ -620,7 +624,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {/* NUEVA PESTAÑA DE GRABACIONES ACTUALIZADA */}
             {activeTab === 'recordings' && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
