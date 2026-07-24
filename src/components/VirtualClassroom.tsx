@@ -1,35 +1,35 @@
 import React, { useState, useRef, useEffect } from "react";
-import { 
-  Video, 
-  Mic, 
-  Tv, 
-  Hand, 
-  MessageSquare, 
-  Users, 
-  LogOut, 
-  Palette, 
-  Eraser, 
-  FileText,
+import {
+  Video,
+  Tv,
+  MessageSquare,
+  LogOut,
+  Palette,
+  Eraser,
   Link as LinkIcon,
   Play,
   Upload,
-  Clock,
   Loader2,
   Trash2,
-  Plus
+  Plus,
+  Disc,
+  StopCircle,
+  FileVideo,
+  CheckCircle2
 } from "lucide-react";
 import { UserProfile } from "../types";
-import { db } from "../firebase";
-import { 
-  collection, 
-  addDoc, 
-  query, 
-  orderBy, 
-  onSnapshot, 
+import { db, storage } from "../firebase"; // <-- Agregamos storage aquí
+import {
+  collection,
+  addDoc,
+  query,
+  orderBy,
+  onSnapshot,
   serverTimestamp,
   deleteDoc,
   doc
 } from "firebase/firestore";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // <-- Importaciones de Storage
 
 interface VirtualClassroomProps {
   currentUser: UserProfile;
@@ -51,10 +51,17 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
 
+  // ==========================================
+  // ESTADOS DE GRABACIÓN Y SUBIDA DE VIDEO
+  // ==========================================
   const [uploadingRecord, setUploadingRecord] = useState(false);
   const [newRecordTitle, setNewRecordTitle] = useState("");
-  const [newRecordUrl, setNewRecordUrl] = useState("");
+  const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
 
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // ==========================================
@@ -62,7 +69,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [brushColor, setBrushColor] = useState('#10b981'); 
+  const [brushColor, setBrushColor] = useState('#10b981');
   const [brushSize, setBrushSize] = useState(4);
 
   useEffect(() => {
@@ -90,18 +97,14 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, [isInRoom, roomCode]);
 
   // ==========================================
-  // 🛡️ TRUCO MÓVIL: SOLICITUD DE PERMISOS NATIVOS
+  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA
   // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
-      // Invocamos a la cámara y micrófono del sistema ANTES de abrir el iframe.
-      // Esto fuerza a Android/iOS a mostrar el diálogo de permisos al usuario.
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      // Apagamos el stream temporal enseguida, el iframe se encargará del resto.
       stream.getTracks().forEach(track => track.stop());
     } catch (err) {
       console.warn("Permisos denegados o hardware no detectado:", err);
-      // Continuamos de todos modos por si el usuario está en PC y los otorgó previamente
     }
     setRoomCode(code);
     setIsInRoom(true);
@@ -127,12 +130,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       setIsInRoom(false);
       setRoomCode("");
       setChatMessages([]);
+      if (isRecording) stopRecording(); // Detener grabación si sale de la sala
     }
   };
 
-  // ==========================================
-  // FUNCIONES DE CHAT FIREBASE
-  // ==========================================
   const handleSendMessage = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() || !roomCode) return;
@@ -154,28 +155,89 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // FUNCIONES DE GRABACIONES FIREBASE
+  // NUEVO: FUNCIONES DE GRABACIÓN DE PANTALLA
+  // ==========================================
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      chunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      mediaRecorderRef.current.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+        const file = new File([blob], `Clase_Grabada_${Date.now()}.webm`, { type: 'video/webm' });
+        setSelectedVideoFile(file);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorderRef.current.start();
+      setIsRecording(true);
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopRecording();
+      };
+    } catch (err) {
+      console.error("Error al iniciar grabación:", err);
+      alert("No se pudo iniciar la grabación. Verifica los permisos de tu navegador.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+  };
+
+  // ==========================================
+  // NUEVO: FUNCIONES DE SUBIDA DE VIDEO A STORAGE
   // ==========================================
   const handleUploadRecording = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newRecordTitle || !newRecordUrl) return;
+    if (!newRecordTitle || !selectedVideoFile) return;
 
     setUploadingRecord(true);
+    
     try {
-      await addDoc(collection(db, "class_recordings"), {
-        title: newRecordTitle,
-        url: newRecordUrl,
-        uploadedBy: currentUser.name,
-        dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-        createdAt: serverTimestamp()
-      });
-      setNewRecordTitle("");
-      setNewRecordUrl("");
-      alert("Grabación publicada exitosamente.");
+      const storageRef = ref(storage, `class_recordings/${Date.now()}_${selectedVideoFile.name}`);
+      const uploadTask = uploadBytesResumable(storageRef, selectedVideoFile);
+
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        },
+        (error) => {
+          console.error("Error subiendo archivo:", error);
+          alert("Error al subir el video.");
+          setUploadingRecord(false);
+        },
+        async () => {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+
+          await addDoc(collection(db, "class_recordings"), {
+            title: newRecordTitle,
+            url: downloadURL,
+            uploadedBy: currentUser.name,
+            dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
+            createdAt: serverTimestamp()
+          });
+
+          setNewRecordTitle("");
+          setSelectedVideoFile(null);
+          setUploadProgress(0);
+          alert("Grabación guardada y publicada exitosamente.");
+          setUploadingRecord(false);
+        }
+      );
     } catch (error) {
       console.error("Error guardando grabación:", error);
-      alert("Error al guardar la grabación en la base de datos.");
-    } finally {
+      alert("Error inesperado al guardar la grabación.");
       setUploadingRecord(false);
     }
   };
@@ -187,7 +249,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // FUNCIONES DE PIZARRA (CON MOTOR MÓVIL)
+  // FUNCIONES DE PIZARRA
   // ==========================================
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
@@ -272,7 +334,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // RENDER 1: LOBBY (FUERA DE LLAMADA)
+  // RENDER 1: LOBBY
   // ==========================================
   if (!isInRoom) {
     return (
@@ -301,8 +363,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         value={roomCode}
                         onChange={(e) => setRoomCode(e.target.value)}
                         placeholder="Ej. farma101"
@@ -324,7 +386,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
             {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
               <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100" : "pt-2"}>
-                <button 
+                <button
                   onClick={createNewRoom}
                   className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
                 >
@@ -360,16 +422,16 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       <p className="text-[10px] text-slate-500 font-medium mt-1">Por: {rec.uploadedBy} • {rec.dateString}</p>
                     </div>
                     <div className="flex items-center justify-between">
-                      <a 
-                        href={rec.url} 
-                        target="_blank" 
+                      <a
+                        href={rec.url}
+                        target="_blank"
                         rel="noreferrer"
                         className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
                       >
                         <Play className="w-3 h-3" /> Ver Grabación
                       </a>
                       {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
-                        <button 
+                        <button
                           onClick={() => handleDeleteRecording(rec.id)}
                           className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
                           title="Eliminar grabación"
@@ -389,7 +451,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA (DISEÑO MÓVIL ÓPTIMO)
+  // RENDER 2: SALA ACTIVA
   // ==========================================
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -408,7 +470,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold flex-1 md:flex-none text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
-          <button 
+          <button
             onClick={leaveRoom}
             className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-3 md:px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
           >
@@ -424,7 +486,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            // 🚀 EL SECRETO ESTÁ AQUÍ: Servidor público Jitsi (meet.ffmuc.net) que NO pide login jamás.
             src={`https://meet.ffmuc.net/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false`}
             className="w-full h-full border-0 absolute inset-0"
             title="Video Classroom INTECA"
@@ -559,49 +620,93 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
+            {/* NUEVA PESTAÑA DE GRABACIONES ACTUALIZADA */}
             {activeTab === 'recordings' && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
-                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-2 shrink-0">
+                <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
                   <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
-                    <Tv className="w-4 h-4" /> Guardar Clase Grabada
+                    <Tv className="w-4 h-4" /> Opciones de Grabación
                   </h3>
+                  <div className="flex gap-2">
+                    {!isRecording ? (
+                      <button 
+                        onClick={startRecording}
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm"
+                      >
+                        <Disc className="w-4 h-4" /> Grabar Pantalla
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={stopRecording}
+                        className="flex-1 bg-slate-900 hover:bg-black text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all animate-pulse shadow-sm"
+                      >
+                        <StopCircle className="w-4 h-4 text-red-500" /> Finalizar Grabación
+                      </button>
+                    )}
+                  </div>
                   <p className="text-[10px] text-emerald-600 leading-relaxed font-medium">
-                    Si grabaste la sesión usando tu software nativo o Drive, pega el enlace aquí para que los alumnos de esta sala puedan repasarla en el archivo general.
+                    {isRecording ? "Grabando pantalla en este momento..." : "Puedes grabar la clase en vivo, o subir un video desde tus archivos para el archivo general."}
                   </p>
                 </div>
-                <form onSubmit={handleUploadRecording} className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1">
+                
+                <form onSubmit={handleUploadRecording} className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Título de la Clase</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       required
-                      placeholder="Ej. Clase 1: Fundamentos..."
+                      placeholder="Ej. Unidad 1: Actualidades..."
                       value={newRecordTitle}
                       onChange={e => setNewRecordTitle(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Enlace del Video</label>
-                    <div className="relative">
-                      <LinkIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-                      <input 
-                        type="url" 
-                        required
-                        placeholder="https://..."
-                        value={newRecordUrl}
-                        onChange={e => setNewRecordUrl(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  
+                  <div className="flex-1 flex flex-col">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Archivo de Video</label>
+                    <div className="relative flex-1 min-h-[100px] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer group">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
+                      
+                      {selectedVideoFile ? (
+                        <div className="flex flex-col items-center text-emerald-600 gap-2 text-center pointer-events-none">
+                          <CheckCircle2 className="w-8 h-8" />
+                          <span className="text-xs font-bold break-words max-w-[200px]">{selectedVideoFile.name}</span>
+                          <span className="text-[10px] text-slate-500">{(selectedVideoFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center text-slate-400 group-hover:text-emerald-500 gap-2 pointer-events-none">
+                          <FileVideo className="w-8 h-8" />
+                          <span className="text-xs font-bold text-center">Toca para seleccionar<br/>o graba un video arriba</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  <button 
-                    type="submit" 
-                    disabled={uploadingRecord || (!newRecordTitle || !newRecordUrl)}
-                    className="w-full bg-slate-900 hover:bg-black disabled:opacity-50 text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-md mt-4"
+
+                  {uploadingRecord && (
+                    <div className="w-full bg-slate-200 rounded-full h-2 mt-2 overflow-hidden">
+                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={uploadingRecord || !newRecordTitle || !selectedVideoFile}
+                    className="w-full bg-slate-900 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-md mt-auto shrink-0"
                   >
-                    {uploadingRecord ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    Subir a la Base de Datos
+                    {uploadingRecord ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Subiendo ({Math.round(uploadProgress)}%)
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" /> Subir a la Base de Datos
+                      </>
+                    )}
                   </button>
                 </form>
               </div>

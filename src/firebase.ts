@@ -28,7 +28,6 @@ import {
   Timestamp,
   serverTimestamp
 } from "firebase/firestore";
-// AQUÍ AGREGAMOS LA IMPORTACIÓN DE STORAGE
 import { getStorage } from "firebase/storage";
 import { UserProfile, UserRole, Course, LiveClass, CloudFile, ChatMessage } from "./types";
 
@@ -50,7 +49,7 @@ export const auth = getAuth(app);
 // Base de datos específica
 export const db = getFirestore(app, "ai-studio-campusvirtualint-dbc5e5fa-0c2e-4740-85d5-91566cdb7d70");
 
-// AQUÍ EXPORTAMOS STORAGE PARA QUE SETTINGSVIEW LO PUEDA USAR
+// Exportamos Storage para la subida de videos e imágenes
 export const storage = getStorage(app);
 
 // Google Auth Provider
@@ -179,7 +178,7 @@ export async function seedInitialDatabaseIfEmpty(): Promise<void> {
     // 1. Check if courses exist
     const coursesCol = collection(db, "courses");
     const coursesSnap = await getDocs(coursesCol);
-       // Check if the new pharmacology course exists with the duration property to know if we've already migrated to the latest version
+    // Check if the new pharmacology course exists with the duration property to know if we've already migrated to the latest version
     const hasNewCourses = !coursesSnap.empty && coursesSnap.docs.some(doc => doc.id === "c_farmacologia" && doc.data().duration !== undefined);
     
     if (coursesSnap.empty || !hasNewCourses) {
