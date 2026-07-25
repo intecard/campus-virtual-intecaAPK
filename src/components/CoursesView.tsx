@@ -2,12 +2,15 @@ import React, { useState, useEffect } from "react";
 import { 
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
-  X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon
+  X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon, Download
 } from "lucide-react";
-import { db, storage, logUserActivity } from "../firebase"; 
+import { db, logUserActivity } from "../firebase"; 
 import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"; 
 import { Course, UserProfile } from "../types";
+
+// 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
+const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
+const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
 
 // Usamos any en variables locales para evitar conflictos de tipado estricto que rompan la compilación
 interface CoursesViewProps {
@@ -40,13 +43,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
 
-  // ESTADOS PARA SUBIDA DE PORTADAS (NUEVO)
+  // ESTADOS PARA SUBIDAS (CLOUDINARY)
   const [uploadingCover, setUploadingCover] = useState(false);
-  const [coverUploadProgress, setCoverUploadProgress] = useState(0);
-
-  // ESTADOS PARA SUBIDA DE VIDEOS EN LECCIONES
   const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
-  const [lessonUploadProgress, setLessonUploadProgress] = useState<number>(0);
   
   // FORMULARIO DE CURSO MULTI-FORMATO
   const [courseForm, setCourseForm] = useState<any>({
@@ -129,7 +128,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       setViewMode('catalog');
     } catch (error) {
       console.error("Error guardando curso:", error);
-      alert("Hubo un error al conectar con Firebase.");
+      alert("Hubo un error al conectar con Firebase Firestore.");
     } finally {
       setIsSaving(false);
     }
@@ -171,91 +170,83 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // NUEVO: SUBIDA DE PORTADA (IMAGEN)
+  // CLOUDINARY: SUBIDA DE PORTADA (IMAGEN)
   // ==========================================
   const handleCoverUpload = async (file: File) => {
     if (!file) return;
+
     setUploadingCover(true);
-    setCoverUploadProgress(0);
 
     try {
-      const storageRef = ref(storage, `course_covers/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setCoverUploadProgress(progress);
-        },
-        (error) => {
-          console.error("Error subiendo portada:", error);
-          alert("Error al subir la imagen.");
-          setUploadingCover(false);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          setCourseForm((prev: any) => ({ ...prev, image: downloadURL }));
-          setUploadingCover(false);
-          setCoverUploadProgress(0);
-        }
-      );
-    } catch (error) {
-      console.error("Error iniciando subida de portada:", error);
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.secure_url) {
+        setCourseForm((prev: any) => ({ ...prev, image: data.secure_url }));
+      } else {
+        alert("Error de Cloudinary al subir imagen: " + (data.error?.message || "Revisa el formato de la imagen."));
+      }
+    } catch (error: any) {
+      console.error("Error subiendo portada:", error);
+      alert(`Error al conectar con el servidor de archivos: ${error.message}`);
+    } finally {
       setUploadingCover(false);
     }
   };
 
   // ==========================================
-  // SUBIDA DE VIDEO DIRECTO AL TEMA (STORAGE)
+  // CLOUDINARY: SUBIDA DE VIDEO AL TEMA
   // ==========================================
   const handleLessonVideoUpload = async (moduleId: string, lessonId: string, file: File) => {
     if (!file) return;
+
     setUploadingLessonId(lessonId);
-    setLessonUploadProgress(0);
 
     try {
-      const storageRef = ref(storage, `course_videos/${Date.now()}_${file.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setLessonUploadProgress(progress);
-        },
-        (error) => {
-          console.error("Error subiendo video al tema:", error);
-          alert("Error al subir el archivo.");
-          setUploadingLessonId(null);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          
-          setCourseForm((prev: any) => {
-            const newMods = [...prev.modules];
-            const mIndex = newMods.findIndex((m: any) => m.id === moduleId);
-            if (mIndex > -1) {
-              const lIndex = newMods[mIndex].lessons.findIndex((l: any) => l.id === lessonId);
-              if (lIndex > -1) {
-                newMods[mIndex].lessons[lIndex].videoUrl = downloadURL;
-              }
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.secure_url) {
+        setCourseForm((prev: any) => {
+          const newMods = [...prev.modules];
+          const mIndex = newMods.findIndex((m: any) => m.id === moduleId);
+          if (mIndex > -1) {
+            const lIndex = newMods[mIndex].lessons.findIndex((l: any) => l.id === lessonId);
+            if (lIndex > -1) {
+              newMods[mIndex].lessons[lIndex].videoUrl = data.secure_url;
             }
-            return { ...prev, modules: newMods };
-          });
-          
-          setUploadingLessonId(null);
-          setLessonUploadProgress(0);
-        }
-      );
-    } catch (error) {
-      console.error("Error iniciando subida:", error);
+          }
+          return { ...prev, modules: newMods };
+        });
+      } else {
+        alert("Error de Cloudinary al subir video: " + (data.error?.message || "Revisa el tamaño máximo del archivo."));
+      }
+    } catch (error: any) {
+      console.error("Error subiendo video:", error);
+      alert(`Error crítico de conexión con el servidor: ${error.message}`);
+    } finally {
       setUploadingLessonId(null);
     }
   };
 
   // ==========================================
-  // ENVÍO DE TAREAS REAL A FIREBASE
+  // ENVÍO DE TAREAS REAL A FIREBASE FIRESTORE
   // ==========================================
   const submitRealHomework = async () => {
     if (homeworkText.trim().length < 10) {
@@ -281,6 +272,25 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       alert("Error de conexión al enviar la tarea.");
     } finally {
       setSubmittingHomework(false);
+    }
+  };
+
+  const handleDownloadImage = async (e: React.MouseEvent, imageUrl: string, courseTitle: string) => {
+    e.stopPropagation(); 
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `Portada_${courseTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error("Error al descargar la imagen. Abriendo en nueva pestaña...", error);
+      window.open(imageUrl, '_blank');
     }
   };
 
@@ -320,73 +330,96 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {displayCourses.map((course: any) => (
-              <div 
-                key={course?.id}
-                className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group cursor-pointer relative"
-                onClick={() => {
-                  setSelectedCourse(course);
-                  setExpandedModule(course?.modules?.[0]?.id || null);
-                  setActiveSubTab('content');
-                  setViewMode('detail');
-                }}
-              >
-                {(isAdmin || safeUser.id === course?.teacherId) && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); openStudio(course); }}
-                    className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600"
+            {displayCourses.map((course: any) => {
+              try {
+                return (
+                  <div 
+                    key={course?.id}
+                    className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group cursor-pointer relative"
+                    onClick={() => {
+                      setSelectedCourse(course);
+                      setExpandedModule(course?.modules?.[0]?.id || null);
+                      setActiveSubTab('content');
+                      setViewMode('detail');
+                    }}
                   >
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                )}
+                    {(isAdmin || safeUser.id === course?.teacherId) && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); openStudio(course); }}
+                        className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 transition-colors"
+                        title="Editar Curso"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    )}
 
-                <div className="relative h-48 bg-slate-900 overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
-                  <img 
-                    src={course?.image || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800"} 
-                    alt="Portada" 
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                  />
-                  <div className="absolute top-4 left-4 z-10">
-                    <span className="text-[9px] text-white font-mono font-bold uppercase px-3 py-1 rounded-full border bg-emerald-500 border-emerald-400">
-                      {course?.format === 'learningstudio' ? 'LearningStudioAI' : course?.format?.toUpperCase() || 'NATIVO'}
-                    </span>
-                  </div>
-                  <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
-                    <span className="text-[10px] font-mono font-bold opacity-80">{course?.code}</span>
-                    <h3 className="font-display font-bold text-lg mt-1 leading-snug">{course?.title}</h3>
-                  </div>
-                </div>
+                    <div className="relative h-48 bg-slate-900 overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 to-transparent z-10" />
+                      <img 
+                        src={course?.image || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800"} 
+                        alt="Portada" 
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                      />
+                      
+                      <div className="absolute top-4 left-4 z-20">
+                        <button 
+                          onClick={(e) => handleDownloadImage(e, course?.image || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800", course?.title || "curso")}
+                          className="bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-emerald-600 transition-colors"
+                          title="Descargar Portada"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
 
-                <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
-                  <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">{course?.description}</p>
-                  
-                  {(course?.duration || course?.level) && (
-                    <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
-                      {course?.duration && (
-                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                          <Clock className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>Duración: <strong className="text-slate-700">{course.duration}</strong></span>
-                        </div>
-                      )}
-                      {course?.level && (
-                        <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                          <Award className="w-3.5 h-3.5 text-sky-500" />
-                          <span>Nivel: <strong className="text-slate-700">{course.level}</strong></span>
-                        </div>
-                      )}
+                      <div className="absolute bottom-4 left-4 right-4 z-10 text-white">
+                        <span className="text-[10px] font-mono font-bold opacity-80">{String(course?.code || "INT-???")}</span>
+                        <h3 className="font-display font-bold text-lg mt-1 leading-snug">{String(course?.title || "Curso sin Título")}</h3>
+                      </div>
                     </div>
-                  )}
 
-                  <div className="flex justify-between items-center pt-2 border-t border-slate-50">
-                    <span className="text-xs text-slate-400 font-medium">Prof. {course?.teacher || "No Asignado"}</span>
-                    <button className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1">
-                      Acceder <ChevronRight className="w-3 h-3" />
-                    </button>
+                    <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
+                      <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">{String(course?.description || "Sin descripción.")}</p>
+                      
+                      {(course?.duration || course?.level) && (
+                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
+                          {course?.duration && (
+                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                              <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                              <span>Duración: <strong className="text-slate-700">{String(course.duration)}</strong></span>
+                            </div>
+                          )}
+                          {course?.level && (
+                            <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
+                              <Award className="w-3.5 h-3.5 text-sky-500" />
+                              <span>Nivel: <strong className="text-slate-700">{String(course.level)}</strong></span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-50">
+                        <span className="text-xs text-slate-400 font-medium">Prof. {String(course?.teacher || "No Asignado")}</span>
+                        <button className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1">
+                          Acceder <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              } catch (e) {
+                return (
+                  <div key={course?.id || Math.random()} className="bg-rose-50 border-2 border-dashed border-rose-300 rounded-3xl p-6 flex flex-col justify-center items-center text-center shadow-sm">
+                    <span className="text-rose-500 font-bold mb-2 flex items-center gap-2"><Layers className="w-5 h-5"/> Curso Dañado</span>
+                    <p className="text-[10px] text-rose-400 mb-4 font-mono">ID: {course?.id || "Desconocido"}</p>
+                    {isAdmin && (
+                      <button onClick={() => deleteCourse(course?.id)} className="bg-rose-500 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-rose-600 transition-colors flex items-center gap-2">
+                        <Trash2 className="w-3.5 h-3.5" /> Eliminar Error
+                      </button>
+                    )}
+                  </div>
+                )
+              }
+            })}
           </div>
         )}
       </div>
@@ -410,7 +443,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               <div className="p-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center rounded-t-2xl">
                 <span className="text-xs font-bold text-slate-600 flex items-center gap-2">
                   <Monitor className="w-4 h-4 text-emerald-500"/>
-                  Visualizador Integrado: {selectedCourse.format.toUpperCase()}
+                  Visualizador Integrado: {String(selectedCourse.format).toUpperCase()}
                 </span>
                 <a href={selectedCourse.contentUrl} target="_blank" rel="noreferrer" className="text-[10px] text-sky-600 flex items-center gap-1 font-bold hover:bg-sky-50 px-2 py-1 rounded transition-colors">
                   Abrir en pestaña externa <ExternalLink className="w-3 h-3"/>
@@ -672,7 +705,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <textarea rows={3} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none leading-relaxed" />
                 </div>
 
-                {/* AQUÍ ESTÁ LA NUEVA SUBIDA DE PORTADA NATIVA */}
+                {/* BOTÓN SUBIDA CLOUDINARY PARA PORTADAS */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Portada del Curso</label>
                   <div className="flex items-center gap-4">
@@ -695,7 +728,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                     <div className="flex-1">
                       <label className={`w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-sm ${uploadingCover ? 'opacity-50 pointer-events-none' : ''}`}>
                         {uploadingCover ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <UploadCloud className="w-4 h-4 text-emerald-500" />}
-                        {uploadingCover ? `Subiendo ${Math.round(coverUploadProgress)}%` : "Subir Imagen (Galería/PC)"}
+                        {uploadingCover ? `Subiendo a Nube...` : "Subir Imagen (Galería/PC)"}
                         <input 
                           type="file" 
                           accept="image/*" 
@@ -703,11 +736,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
                               handleCoverUpload(e.target.files[0]);
+                              e.target.value = ''; 
                             }
                           }} 
                         />
                       </label>
-                      <p className="text-[9px] text-slate-400 mt-1.5 text-center leading-tight">Formatos: JPG, PNG. Al hacer clic se abrirá la galería o archivos.</p>
+                      <p className="text-[9px] text-slate-400 mt-1.5 text-center leading-tight">Servicio Cloudinary (Almacenamiento Independiente).</p>
                     </div>
                   </div>
                 </div>
@@ -800,6 +834,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   }} className="bg-white border border-slate-200 rounded-lg p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Enlace del documento..."/>
                                 </div>
                                 
+                                {/* BOTÓN DE SUBIDA DE VIDEO CLOUDINARY PARA LECCIONES */}
                                 <div>
                                   <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Clase Grabada (Video)</label>
                                   <div className="flex gap-1.5">
@@ -809,7 +844,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                     
                                     <label 
                                       className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}
-                                      title="Subir video desde la PC"
+                                      title="Subir video desde la PC a Cloudinary"
                                     >
                                       {uploadingLessonId === lesson.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
                                       <input 
@@ -817,17 +852,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                         onChange={(e) => {
                                           if (e.target.files && e.target.files[0]) {
                                             handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]);
+                                            e.target.value = ''; 
                                           }
                                         }} 
                                       />
                                     </label>
                                   </div>
-                                  
-                                  {uploadingLessonId === lesson.id && (
-                                    <div className="w-full bg-slate-200 rounded-full h-1 mt-2 overflow-hidden">
-                                      <div className="bg-emerald-500 h-1 rounded-full transition-all duration-300" style={{ width: `${lessonUploadProgress}%` }}></div>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             </div>
