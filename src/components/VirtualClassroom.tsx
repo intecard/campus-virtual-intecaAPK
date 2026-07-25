@@ -18,7 +18,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { UserProfile } from "../types";
-import { db, storage } from "../firebase"; // <-- Agregamos storage aquí
+import { db } from "../firebase"; // ⬅️ Eliminamos 'storage' de aquí
 import {
   collection,
   addDoc,
@@ -29,7 +29,10 @@ import {
   deleteDoc,
   doc
 } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage"; // <-- Importaciones de Storage
+
+// 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
+const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
+const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
 
 interface VirtualClassroomProps {
   currentUser: UserProfile;
@@ -155,7 +158,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // NUEVO: FUNCIONES DE GRABACIÓN DE PANTALLA
+  // FUNCIONES DE GRABACIÓN DE PANTALLA
   // ==========================================
   const startRecording = async () => {
     try {
@@ -169,8 +172,22 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       mediaRecorderRef.current.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-        const file = new File([blob], `Clase_Grabada_${Date.now()}.webm`, { type: 'video/webm' });
-        setSelectedVideoFile(file);
+        const fileName = `Clase_Grabada_${Date.now()}.webm`;
+        const file = new File([blob], fileName, { type: 'video/webm' });
+        
+        setSelectedVideoFile(file); // Lo deja listo para subir a la nube
+
+        // 🌟 NUEVO: FUERZA LA DESCARGA AUTOMÁTICA DEL ARCHIVO A TU PC
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -194,52 +211,68 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // NUEVO: FUNCIONES DE SUBIDA DE VIDEO A STORAGE
+  // NUEVO: SUBIDA DE VIDEO A CLOUDINARY
   // ==========================================
   const handleUploadRecording = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRecordTitle || !selectedVideoFile) return;
 
     setUploadingRecord(true);
-    
-    try {
-      const storageRef = ref(storage, `class_recordings/${Date.now()}_${selectedVideoFile.name}`);
-      const uploadTask = uploadBytesResumable(storageRef, selectedVideoFile);
+    setUploadProgress(0);
 
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(progress);
-        },
-        (error) => {
-          console.error("Error subiendo archivo:", error);
-          alert("Error al subir el video.");
-          setUploadingRecord(false);
-        },
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+    const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`;
+    const formData = new FormData();
+    formData.append("file", selectedVideoFile);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-          await addDoc(collection(db, "class_recordings"), {
-            title: newRecordTitle,
-            url: downloadURL,
-            uploadedBy: currentUser.name,
-            dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-            createdAt: serverTimestamp()
-          });
+    // Usamos XMLHttpRequest para poder ver la barrita de progreso al 100%
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
 
-          setNewRecordTitle("");
-          setSelectedVideoFile(null);
-          setUploadProgress(0);
-          alert("Grabación guardada y publicada exitosamente.");
-          setUploadingRecord(false);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100;
+        setUploadProgress(percentComplete);
+      }
+    };
+
+    xhr.onload = async () => {
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        if (data.secure_url) {
+          try {
+            await addDoc(collection(db, "class_recordings"), {
+              title: newRecordTitle,
+              url: data.secure_url,
+              uploadedBy: currentUser.name,
+              dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
+              createdAt: serverTimestamp()
+            });
+
+            setNewRecordTitle("");
+            setSelectedVideoFile(null);
+            alert("¡Grabación guardada en tu Nube y publicada exitosamente!");
+          } catch (dbError) {
+            console.error("Error guardando en Firestore:", dbError);
+            alert("El video subió a tu disco duro, pero hubo un error al registrarlo en la plataforma.");
+          }
         }
-      );
-    } catch (error) {
-      console.error("Error guardando grabación:", error);
-      alert("Error inesperado al guardar la grabación.");
+      } else {
+        const errorData = JSON.parse(xhr.responseText);
+        alert("Error de Cloudinary: " + (errorData.error?.message || "Límite de tamaño excedido."));
+      }
       setUploadingRecord(false);
-    }
+      setUploadProgress(0);
+    };
+
+    xhr.onerror = () => {
+      console.error("Error en la conexión a Cloudinary.");
+      alert("Fallo de conexión. No se pudo subir el video.");
+      setUploadingRecord(false);
+      setUploadProgress(0);
+    };
+
+    xhr.send(formData);
   };
 
   const handleDeleteRecording = async (id: string) => {
@@ -451,10 +484,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA (CORRECCIÓN APLICADA AQUÍ)
+  // RENDER 2: SALA ACTIVA
   // ==========================================
-  // Configuramos la barra de herramientas de Jitsi para OCULTAR el botón de colgar ("hangup")
-  // Esto obliga al usuario a usar el botón nativo de la app "Salir de la Clase"
   const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","chat","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
@@ -486,7 +517,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
-        {/* ÁREA DE VIDEO - JITSI INTEGRADO (NUEVA CONFIGURACIÓN) */}
+        {/* ÁREA DE VIDEO - JITSI INTEGRADO */}
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
@@ -703,7 +734,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   >
                     {uploadingRecord ? (
                       <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Subiendo ({Math.round(uploadProgress)}%)
+                        <Loader2 className="w-4 h-4 animate-spin" /> Subiendo a la Nube ({Math.round(uploadProgress)}%)
                       </>
                     ) : (
                       <>
