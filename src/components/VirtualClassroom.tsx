@@ -89,7 +89,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
-    // 🛡️ CIRUGÍA: Oyente de chat con Cierre Global de Sala
     const q = query(collection(db, `class_chat_${roomCode}`), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs: any[] = [];
@@ -97,7 +96,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       snapshot.forEach(doc => {
         const data = doc.data();
-        // Si detectamos el mensaje fantasma del sistema, significa que el profesor cerró la sala
         if (data.text === "ROOM_CLOSED_BY_HOST" && data.senderRole === "system") {
           roomClosed = true;
         } else {
@@ -114,7 +112,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         setIsInRoom(false);
         setRoomCode("");
         setChatMessages([]);
-        return; // Detiene la ejecución, expulsando al usuario
+        return; 
       }
 
       setChatMessages(msgs);
@@ -158,7 +156,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     triggerPermissionsAndJoin(newCode);
   };
 
-  // 🛡️ CIRUGÍA: Botón de salida con capacidad de Cierre Global
   const leaveRoom = () => {
     const isHost = currentUser.role === 'admin' || currentUser.role === 'teacher';
     const confirmMsg = isHost 
@@ -167,7 +164,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
     if (window.confirm(confirmMsg)) {
       if (isHost) {
-        // Disparamos el mensaje fantasma sin esperar (fire-and-forget) para que cierre rápido
         addDoc(collection(db, `class_chat_${roomCode}`), {
           senderName: "Sistema",
           senderRole: "system",
@@ -226,10 +222,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const fileName = `Clase_Grabada_${Date.now()}.webm`;
         const file = new File([blob], fileName, { type: 'video/webm' });
         
-        // 1. Forzamos que la plataforma dibuje el check verde INMEDIATAMENTE
         setSelectedVideoFile(file);
 
-        // 2. Descargamos el archivo medio segundo después para no interrumpir a React
         setTimeout(() => {
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement('a');
@@ -436,7 +430,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Aula Virtual INTECA Live</h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* 🛡️ CIRUGÍA: Reestructuración de la grilla dependiendo del rol */}
+        <div className={`grid grid-cols-1 gap-6 ${(currentUser.role === 'admin' || currentUser.role === 'teacher') ? 'md:grid-cols-2' : 'max-w-xl mx-auto'}`}>
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
             <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4">
               <Video className="w-8 h-8" />
@@ -485,55 +480,58 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             )}
           </div>
 
-          <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Tv className="w-5 h-5 text-emerald-500" /> Archivo de Grabaciones
-              </h2>
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none">
-              {loadingRecordings ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-                  <p className="text-xs font-mono font-bold uppercase tracking-wider">Cargando archivo...</p>
-                </div>
-              ) : recordings.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
-                  <Tv className="w-12 h-12 text-slate-200" />
-                  <p className="text-sm font-bold text-slate-600">No hay clases grabadas</p>
-                  <p className="text-xs text-center">Las clases guardadas por los profesores aparecerán aquí.</p>
-                </div>
-              ) : (
-                recordings.map((rec) => (
-                  <div key={rec.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-3 group hover:border-emerald-500/30 transition-all">
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm leading-snug">{rec.title}</h4>
-                      <p className="text-[10px] text-slate-500 font-medium mt-1">Por: {rec.uploadedBy} • {rec.dateString}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <a
-                        href={rec.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
-                      >
-                        <Play className="w-3 h-3" /> Ver Grabación
-                      </a>
-                      {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
-                        <button
-                          onClick={() => handleDeleteRecording(rec.id)}
-                          className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
-                          title="Eliminar grabación"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+          {/* 🛡️ CIRUGÍA: Ocultamos completamente este panel para los estudiantes */}
+          {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+            <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <Tv className="w-5 h-5 text-emerald-500" /> Archivo de Grabaciones
+                </h2>
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none">
+                {loadingRecordings ? (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
+                    <p className="text-xs font-mono font-bold uppercase tracking-wider">Cargando archivo...</p>
                   </div>
-                ))
-              )}
+                ) : recordings.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
+                    <Tv className="w-12 h-12 text-slate-200" />
+                    <p className="text-sm font-bold text-slate-600">No hay clases grabadas</p>
+                    <p className="text-xs text-center">Las clases guardadas por los profesores aparecerán aquí.</p>
+                  </div>
+                ) : (
+                  recordings.map((rec) => (
+                    <div key={rec.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col gap-3 group hover:border-emerald-500/30 transition-all">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm leading-snug">{rec.title}</h4>
+                        <p className="text-[10px] text-slate-500 font-medium mt-1">Por: {rec.uploadedBy} • {rec.dateString}</p>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <a
+                          href={rec.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                        >
+                          <Play className="w-3 h-3" /> Ver Grabación
+                        </a>
+                        {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
+                          <button
+                            onClick={() => handleDeleteRecording(rec.id)}
+                            className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
+                            title="Eliminar grabación"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     );
@@ -542,7 +540,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
-  // 🛡️ CIRUGÍA: Extirpamos "chat" de los toolbarButtons para obligar al uso del chat general
   const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
@@ -573,7 +570,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
-        {/* ÁREA DE VIDEO - JITSI INTEGRADO Y PARCHE ESTÉTICO */}
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
@@ -582,7 +578,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             title="Video Classroom INTECA"
           />
           
-          {/* 🛡️ CIRUGÍA: El súper parche anclado a la esquina que bloquea completamente el logo de Jitsi */}
           <div className="absolute top-0 left-0 z-10 w-48 sm:w-56 h-16 bg-slate-900 flex items-center justify-center rounded-br-3xl shadow-[5px_5px_15px_rgba(0,0,0,0.5)] border-b border-r border-slate-700 pointer-events-none">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -629,7 +624,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   ) : (
                     chatMessages.map((msg, idx) => {
                       const isMe = msg.senderName === currentUser.name;
-                      // El sistema no debe renderizar el mensaje oculto de cierre de sala en la interfaz de chat
                       if (msg.text === "ROOM_CLOSED_BY_HOST") return null;
 
                       return (
