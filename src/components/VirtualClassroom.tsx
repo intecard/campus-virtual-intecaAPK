@@ -89,11 +89,34 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
-    // 🛡️ CIRUGÍA: Escucha de chat en vivo con detector de errores de permisos
+    // 🛡️ CIRUGÍA: Oyente de chat con Cierre Global de Sala
     const q = query(collection(db, `class_chat_${roomCode}`), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs: any[] = [];
-      snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
+      let roomClosed = false;
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // Si detectamos el mensaje fantasma del sistema, significa que el profesor cerró la sala
+        if (data.text === "ROOM_CLOSED_BY_HOST" && data.senderRole === "system") {
+          roomClosed = true;
+        } else {
+          msgs.push({ id: doc.id, ...data });
+        }
+      });
+
+      if (roomClosed) {
+        alert("El profesor ha finalizado la clase. La sala ha sido cerrada para todos.");
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+        }
+        setIsInRoom(false);
+        setRoomCode("");
+        setChatMessages([]);
+        return; // Detiene la ejecución, expulsando al usuario
+      }
+
       setChatMessages(msgs);
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }, (error) => {
@@ -135,12 +158,33 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     triggerPermissionsAndJoin(newCode);
   };
 
+  // 🛡️ CIRUGÍA: Botón de salida con capacidad de Cierre Global
   const leaveRoom = () => {
-    if (window.confirm("¿Seguro que deseas salir de la clase en vivo?")) {
+    const isHost = currentUser.role === 'admin' || currentUser.role === 'teacher';
+    const confirmMsg = isHost 
+      ? "¿Seguro que deseas FINALIZAR la clase para todos los participantes?" 
+      : "¿Seguro que deseas salir de la clase?";
+
+    if (window.confirm(confirmMsg)) {
+      if (isHost) {
+        // Disparamos el mensaje fantasma sin esperar (fire-and-forget) para que cierre rápido
+        addDoc(collection(db, `class_chat_${roomCode}`), {
+          senderName: "Sistema",
+          senderRole: "system",
+          text: "ROOM_CLOSED_BY_HOST",
+          timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          timestamp: serverTimestamp()
+        }).catch((e) => console.error("Error cerrando sala:", e));
+      }
+
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+      }
+      
       setIsInRoom(false);
       setRoomCode("");
       setChatMessages([]);
-      if (isRecording) stopRecording(); // Detener grabación si sale de la sala
     }
   };
 
@@ -538,10 +582,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             title="Video Classroom INTECA"
           />
           
-          {/* 🛡️ PARCHE ESTÉTICO */}
-          <div className="absolute top-4 left-4 z-10 bg-slate-950 px-4 py-2 rounded-xl flex items-center gap-2 shadow-2xl border border-slate-800 pointer-events-none">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span className="text-xs font-bold text-white font-mono uppercase tracking-widest">Inteca Campus</span>
+          {/* 🛡️ CIRUGÍA: El súper parche anclado a la esquina que bloquea completamente el logo de Jitsi */}
+          <div className="absolute top-0 left-0 z-10 w-48 sm:w-56 h-16 bg-slate-900 flex items-center justify-center rounded-br-3xl shadow-[5px_5px_15px_rgba(0,0,0,0.5)] border-b border-r border-slate-700 pointer-events-none">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+              <span className="text-[11px] sm:text-xs font-bold text-white font-mono uppercase tracking-widest">Inteca Campus</span>
+            </div>
           </div>
         </div>
 
@@ -583,6 +629,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   ) : (
                     chatMessages.map((msg, idx) => {
                       const isMe = msg.senderName === currentUser.name;
+                      // El sistema no debe renderizar el mensaje oculto de cierre de sala en la interfaz de chat
+                      if (msg.text === "ROOM_CLOSED_BY_HOST") return null;
+
                       return (
                         <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5`}>
                           <div className="flex items-baseline gap-2">
