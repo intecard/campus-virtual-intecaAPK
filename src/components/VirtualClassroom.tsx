@@ -175,23 +175,29 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const fileName = `Clase_Grabada_${Date.now()}.webm`;
         const file = new File([blob], fileName, { type: 'video/webm' });
         
-        setSelectedVideoFile(file); // Lo deja listo para subir a la nube
+        // 1. Forzamos que la plataforma dibuje el check verde INMEDIATAMENTE
+        setSelectedVideoFile(file);
 
-        // 🌟 NUEVO: FUERZA LA DESCARGA AUTOMÁTICA DEL ARCHIVO A TU PC
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
+        // 2. Descargamos el archivo medio segundo después para no interrumpir a React
+        setTimeout(() => {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          
+          setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+          }, 1000);
+        }, 500);
 
         stream.getTracks().forEach(track => track.stop());
       };
 
-      mediaRecorderRef.current.start();
+      mediaRecorderRef.current.start(1000);
       setIsRecording(true);
 
       stream.getVideoTracks()[0].onended = () => {
@@ -225,7 +231,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     formData.append("file", selectedVideoFile);
     formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-    // Usamos XMLHttpRequest para poder ver la barrita de progreso al 100%
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
 
@@ -486,12 +491,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
+  // Nota: "desktop" (compartir pantalla) ya está incluido en los botones nativos de Jitsi para todos los roles.
   const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","chat","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
       
-      {/* Header de la Sala Activa */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-900 p-4 rounded-2xl text-white shadow-lg shrink-0">
         <div>
           <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -517,17 +522,22 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
-        {/* ÁREA DE VIDEO - JITSI INTEGRADO */}
+        {/* ÁREA DE VIDEO - JITSI INTEGRADO Y PARCHE ESTÉTICO */}
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
             src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false${jitsiConfigParams}`}
-            className="w-full h-full border-0 absolute inset-0"
+            className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
+          
+          {/* 🛡️ PARCHE ESTÉTICO: Etiqueta nativa que cubre el logo de Jitsi */}
+          <div className="absolute top-4 left-4 z-10 bg-slate-950 px-4 py-2 rounded-xl flex items-center gap-2 shadow-2xl border border-slate-800 pointer-events-none">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            <span className="text-xs font-bold text-white font-mono uppercase tracking-widest">Inteca Campus</span>
+          </div>
         </div>
 
-        {/* ÁREA DE HERRAMIENTAS */}
         <div className="w-full lg:w-1/3 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex flex-col flex-1 min-h-[40vh] overflow-hidden">
           <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1 shrink-0">
             <button
@@ -542,16 +552,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             >
               <Palette className="w-3.5 h-3.5" /> Pizarra
             </button>
-            <button
-              onClick={() => setActiveTab('recordings')}
-              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
-            >
-              <Tv className="w-3.5 h-3.5" /> Grabar
-            </button>
+            
+            {/* 🛡️ REGLA APLICADA: Esta pestaña solo la ven Profesores o el Admin */}
+            {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+              <button
+                onClick={() => setActiveTab('recordings')}
+                className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
+                <Tv className="w-3.5 h-3.5" /> Grabar
+              </button>
+            )}
           </div>
 
           <div className="flex-1 p-3 md:p-4 overflow-y-auto relative bg-slate-50/30">
-            
             {activeTab === 'chat' && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4">
                 <div className="flex-1 overflow-y-auto space-y-3 pr-2 scrollbar-none pb-4">
@@ -655,7 +668,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {activeTab === 'recordings' && (
+            {/* 🛡️ REGLA APLICADA: Este panel solo existe para Profesores o el Admin */}
+            {activeTab === 'recordings' && (currentUser.role === 'admin' || currentUser.role === 'teacher') && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
                   <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
