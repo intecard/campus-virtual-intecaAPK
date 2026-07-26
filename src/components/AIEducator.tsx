@@ -87,7 +87,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     try {
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey === "") {
+      // Validación estricta de lectura del .env
+      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey.trim() === "") {
         throw new Error("API_KEY_MISSING");
       }
 
@@ -102,7 +103,11 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
         })
       });
 
-      if (!response.ok) throw new Error("Error en la conexión con el servidor de la IA.");
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Detalles del rechazo de Google Gemini:", errorData);
+        throw new Error("API_FETCH_ERROR");
+      }
 
       const data = await response.json();
       const aiReply = data.candidates[0].content.parts[0].text;
@@ -118,11 +123,13 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     } catch (error: any) {
       console.error("Error en Tutor IA:", error);
       
-      // C. Manejo de Errores
+      // C. Manejo de Errores Clínico
       let fallbackReply = "Hubo un error de conexión con la red neuronal. Por favor, intenta de nuevo.";
       
       if (error.message === "API_KEY_MISSING") {
-        fallbackReply = `[MODO DE CONFIGURACIÓN]: He recibido tu consulta: "${userText}". Para que el tutor funcione al 100% y responda con información real, debes ir al archivo '.env' y colocar una API Key válida de Google Gemini en la variable VITE_GEMINI_API_KEY.`;
+        fallbackReply = `[ALERTA DE SISTEMA]: No detecto tu llave de Gemini. Esto ocurre casi siempre porque necesitas REINICIAR el servidor. Ve a la terminal de Visual Studio Code, presiona 'Ctrl + C' para apagarlo y luego escribe 'npm run dev' para volverlo a encender. Así leeré tu archivo .env.`;
+      } else if (error.message === "API_FETCH_ERROR") {
+        fallbackReply = `[ALERTA DE CONEXIÓN]: Google ha rechazado la llave. Verifica que en tu archivo .env la llave no tenga espacios en blanco al inicio o al final.`;
       }
 
       await addDoc(chatCollectionRef, {
