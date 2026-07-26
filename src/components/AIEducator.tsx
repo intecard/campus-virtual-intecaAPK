@@ -328,4 +328,4 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       </div>
     </div>
   );
-}
+} 
