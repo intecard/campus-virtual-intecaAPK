@@ -18,7 +18,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { UserProfile } from "../types";
-import { db } from "../firebase"; // ⬅️ Eliminamos 'storage' de aquí
+import { db } from "../firebase"; 
 import {
   collection,
   addDoc,
@@ -89,13 +89,20 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
+    // 🛡️ CIRUGÍA: Escucha de chat en vivo con detector de errores de permisos
     const q = query(collection(db, `class_chat_${roomCode}`), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs: any[] = [];
       snapshot.forEach(doc => msgs.push({ id: doc.id, ...doc.data() }));
       setChatMessages(msgs);
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    }, (error) => {
+      console.error("Error en Firestore al intentar leer el chat:", error);
+      if (error.code === 'permission-denied') {
+        console.warn("ALERTA DE SEGURIDAD: Los estudiantes no tienen permiso en Firebase para leer/escribir en el chat.");
+      }
     });
+    
     return () => unsubscribe();
   }, [isInRoom, roomCode]);
 
@@ -491,8 +498,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
-  // Nota: "desktop" (compartir pantalla) ya está incluido en los botones nativos de Jitsi para todos los roles.
-  const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","chat","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+  // 🛡️ CIRUGÍA: Extirpamos "chat" de los toolbarButtons para obligar al uso del chat general
+  const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -531,7 +538,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             title="Video Classroom INTECA"
           />
           
-          {/* 🛡️ PARCHE ESTÉTICO: Etiqueta nativa que cubre el logo de Jitsi */}
+          {/* 🛡️ PARCHE ESTÉTICO */}
           <div className="absolute top-4 left-4 z-10 bg-slate-950 px-4 py-2 rounded-xl flex items-center gap-2 shadow-2xl border border-slate-800 pointer-events-none">
             <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
             <span className="text-xs font-bold text-white font-mono uppercase tracking-widest">Inteca Campus</span>
@@ -553,7 +560,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <Palette className="w-3.5 h-3.5" /> Pizarra
             </button>
             
-            {/* 🛡️ REGLA APLICADA: Esta pestaña solo la ven Profesores o el Admin */}
             {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
               <button
                 onClick={() => setActiveTab('recordings')}
@@ -578,7 +584,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     chatMessages.map((msg, idx) => {
                       const isMe = msg.senderName === currentUser.name;
                       return (
-                        <div key={idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5`}>
+                        <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5`}>
                           <div className="flex items-baseline gap-2">
                             <span className="font-bold text-[11px] text-slate-700">{msg.senderName}</span>
                             <span className="text-[9px] text-slate-400">{msg.timeString}</span>
@@ -668,7 +674,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {/* 🛡️ REGLA APLICADA: Este panel solo existe para Profesores o el Admin */}
             {activeTab === 'recordings' && (currentUser.role === 'admin' || currentUser.role === 'teacher') && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
