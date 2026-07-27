@@ -5,3 +5,5 @@ python-dotenv
 pydantic
 pypdf
 python-docx
+pandas
+openpyxl

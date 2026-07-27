@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 # Dependencias para leer documentos (Los lentes nuevos de la IA)
 from pypdf import PdfReader
 import docx
+import pandas as pd  # <-- NUEVO: Lente especial para archivos Excel
 
 # Cargar variables ocultas de seguridad
 load_dotenv()
@@ -68,9 +69,26 @@ def cargar_base_conocimiento():
         except Exception as e:
             print(f"Error leyendo {archivo_word}: {e}")
             
+    # <-- NUEVO: Leer archivos Excel (.xlsx) -->
+    for archivo_excel in glob.glob(f"{ruta_carpeta}/*.xlsx"):
+        try:
+            # Leemos todas las hojas del excel
+            df_dict = pd.read_excel(archivo_excel, sheet_name=None)
+            for nombre_hoja, df in df_dict.items():
+                texto_completo += f"--- Hoja de Excel: {nombre_hoja} ---\n"
+                texto_completo += df.to_string(index=False) + "\n"
+        except Exception as e:
+            print(f"Error leyendo {archivo_excel}: {e}")
+            
     if texto_completo == "":
         return "Aún no hay documentos legibles en la biblioteca."
         
+    # <-- NUEVO: Escudo protector de memoria -->
+    # Limitamos a 400,000 caracteres para evitar que la API colapse por exceso de información
+    if len(texto_completo) > 400000:
+        texto_completo = texto_completo[:400000]
+        print("Aviso: La base de conocimientos se ajustó al límite seguro de la IA.")
+
     return texto_completo
 
 # Cargamos el conocimiento a la memoria de la IA al encender el servidor
@@ -80,7 +98,7 @@ CONOCIMIENTO_INTECA = cargar_base_conocimiento()
 # 5. Ruta de prueba
 @app.get("/")
 def estado_motor():
-    return {"estado": "INTECA LLM encendido y leyendo biblioteca privada"}
+    return {"estado": "INTECA LLM encendido, con Excel y leyendo biblioteca privada"}
 
 # 6. EL PUENTE PRINCIPAL: Conexión con IA Real
 @app.post("/api/chat")
