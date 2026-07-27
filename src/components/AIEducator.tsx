@@ -74,9 +74,9 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       console.error("Error:", error);
     }
 
-    // 2. Consultar a NUESTRO PROPIO MOTOR LLM (Python FastAPI Backend)
+    // 2. Consultar a NUESTRO PROPIO MOTOR LLM (Nube Render)
     try {
-      const response = await fetch("http://localhost:8000/api/chat", {
+      const response = await fetch("https://motor-inteca.onrender.com/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -86,7 +86,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       });
 
       if (!response.ok) {
-        throw new Error("El motor IA de INTECA local no está encendido o no responde.");
+        throw new Error("El motor IA de INTECA no está encendido o no responde.");
       }
 
       const data = await response.json();
@@ -103,7 +103,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     } catch (error: any) {
       console.error("Error en Tutor IA:", error);
       
-      const fallbackReply = `[SISTEMA DESCONECTADO]: ${error.message} Verifica que el servidor de Python FastAPI esté corriendo en el puerto 8000.`;
+      const fallbackReply = `[SISTEMA DESCONECTADO]: ${error.message} Verifica que el servidor de Render esté activo.`;
 
       await addDoc(chatCollectionRef, {
         sender: "ai",
