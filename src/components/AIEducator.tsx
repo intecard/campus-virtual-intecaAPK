@@ -97,7 +97,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       // 🧠 INSTRUCCIÓN SECRETA PARA LA IA (System Prompt)
       const promptText = `Eres el Tutor de Inteligencia Artificial oficial de INTECA (Instituto Técnico del Caribe). Tu objetivo es brindar información de manera clara, precisa, con información médica, tecnológica y científica real y verídica. Responde a esta consulta del estudiante ${currentUser.name}: "${userText}"`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+      // SE CORRIGIÓ EL NOMBRE DEL MODELO AQUÍ ABAJO (gemini-1.5-flash -> gemini-pro)
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
