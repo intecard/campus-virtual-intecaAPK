@@ -33,17 +33,12 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   const [isClearing, setIsClearing] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Referencia a la colección privada de chat de este usuario en Firebase
   const chatCollectionRef = collection(db, `users/${currentUser.id}/ai_chat`);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // ==========================================
-  // 1. CARGAR HISTORIAL EN TIEMPO REAL DESDE FIREBASE
-  // ==========================================
   useEffect(() => {
     const q = query(chatCollectionRef, orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -53,7 +48,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       });
       setMessages(loadedMessages);
     });
-
     return () => unsubscribe();
   }, [currentUser.id]);
 
@@ -61,17 +55,14 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     scrollToBottom();
   }, [messages, isTyping]);
 
-  // ==========================================
-  // 2. ENVIAR MENSAJE (Usuario -> Firebase -> GEMINI AI REAL)
-  // ==========================================
   const handleSendMessage = async (text: string = inputMessage) => {
     if (!text.trim()) return;
 
     const userText = text.trim();
-    setInputMessage(""); // Limpiar la caja de texto rápido
+    setInputMessage(""); 
     setIsTyping(true);
 
-    // A. Guardar mensaje del usuario en Firebase
+    // 1. Guardar mensaje del usuario en Firebase
     try {
       await addDoc(chatCollectionRef, {
         sender: "user",
@@ -80,43 +71,28 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
         timestamp: Date.now()
       });
     } catch (error) {
-      console.error("Error guardando mensaje de usuario:", error);
+      console.error("Error:", error);
     }
 
-    // B. Consultar a la API REAL de Google Gemini
+    // 2. Consultar a NUESTRO PROPIO MOTOR LLM (Python FastAPI Backend)
     try {
-      // Limpieza EXTREMA de la llave: elimina espacios y cualquier comilla accidental
-      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-      const apiKey = rawApiKey.replace(/['"]/g, '').trim();
-
-      // Validación estricta de lectura del .env o GitHub Secrets
-      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey === "") {
-        throw new Error("API_KEY_MISSING");
-      }
-
-      // 🧠 INSTRUCCIÓN SECRETA PARA LA IA (System Prompt)
-      const promptText = `Eres el Tutor de Inteligencia Artificial oficial de INTECA (Instituto Técnico del Caribe). Tu objetivo es brindar información de manera clara, precisa, con información médica, tecnológica y científica real y verídica. Responde a esta consulta del estudiante ${currentUser.name}: "${userText}"`;
-
-      // SE CORRIGIÓ EL NOMBRE DEL MODELO AQUÍ ABAJO (gemini-1.5-flash -> gemini-pro)
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+      const response = await fetch("http://localhost:8000/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }]
+        body: JSON.stringify({ 
+          message: userText,
+          studentName: currentUser.name
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Detalles del rechazo de Google Gemini:", errorData);
-        // Capturamos el mensaje exacto de Google para mostrarlo en el chat
-        throw new Error(`API_FETCH_ERROR|${errorData.error?.message || 'Error desconocido en servidores de Google'}`);
+        throw new Error("El motor IA de INTECA local no está encendido o no responde.");
       }
 
       const data = await response.json();
-      const aiReply = data.candidates[0].content.parts[0].text;
+      const aiReply = data.respuesta;
       
-      // Guardar la respuesta real de la IA en Firebase
+      // 3. Guardar respuesta de la IA
       await addDoc(chatCollectionRef, {
         sender: "ai",
         text: aiReply,
@@ -127,15 +103,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     } catch (error: any) {
       console.error("Error en Tutor IA:", error);
       
-      // C. Manejo de Errores Clínico
-      let fallbackReply = "Hubo un error de conexión con la red neuronal. Por favor, intenta de nuevo.";
-      
-      if (error.message === "API_KEY_MISSING") {
-        fallbackReply = `[ALERTA DE SISTEMA]: No detecto tu llave de Gemini. Esto ocurre casi siempre porque necesitas REINICIAR el servidor. Ve a la terminal de Visual Studio Code, presiona 'Ctrl + C' para apagarlo y luego escribe 'npm run dev' para volverlo a encender. Así leeré tu archivo .env.`;
-      } else if (error.message.startsWith("API_FETCH_ERROR|")) {
-        const googleErrorMsg = error.message.split("|")[1];
-        fallbackReply = `[ALERTA DE CONEXIÓN]: Google ha rechazado la conexión.\n\nMOTIVO EXACTO DEVUELTO POR GOOGLE:\n"${googleErrorMsg}"\n\n(Toma una captura de esto, es la causa real del problema).`;
-      }
+      const fallbackReply = `[SISTEMA DESCONECTADO]: ${error.message} Verifica que el servidor de Python FastAPI esté corriendo en el puerto 8000.`;
 
       await addDoc(chatCollectionRef, {
         sender: "ai",
@@ -148,12 +116,9 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     }
   };
 
-  // ==========================================
-  // 3. LIMPIAR HISTORIAL (Empezar en 0)
-  // ==========================================
   const clearChatHistory = async () => {
     if (messages.length === 0) return;
-    if (window.confirm("¿Deseas borrar toda la memoria de esta conversación y empezar desde cero?")) {
+    if (window.confirm("¿Deseas borrar toda la memoria de esta conversación?")) {
       setIsClearing(true);
       try {
         const snap = await getDocs(chatCollectionRef);
@@ -176,19 +141,19 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   return (
     <div className="h-full flex flex-col animate-in fade-in duration-500 pb-10">
       
-      {/* Header del Tutor */}
+      {/* Header */}
       <div className="bg-slate-900 rounded-t-3xl p-6 flex items-center justify-between shadow-xl relative overflow-hidden border border-slate-800 shrink-0">
-        <div className="absolute -right-10 -top-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl"></div>
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 bg-emerald-500/20 border border-emerald-500/50 rounded-2xl flex items-center justify-center relative shadow-inner shadow-emerald-500/20">
-            <Bot className="w-8 h-8 text-emerald-400" />
-            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full animate-pulse"></span>
+          <div className="w-14 h-14 bg-indigo-500/20 border border-indigo-500/50 rounded-2xl flex items-center justify-center relative shadow-inner shadow-indigo-500/20">
+            <Bot className="w-8 h-8 text-indigo-400" />
+            <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-500 border-2 border-slate-900 rounded-full animate-pulse"></span>
           </div>
           <div>
             <h1 className="text-xl font-display font-bold text-white flex items-center gap-2">
-              INTECA Intellect IA <Sparkles className="w-4 h-4 text-emerald-400" />
+              Profesor IA INTECA <Sparkles className="w-4 h-4 text-indigo-400" />
             </h1>
-            <p className="text-xs text-slate-400 font-medium">Asistencia académica conectada a la base de datos central</p>
+            <p className="text-xs text-slate-400 font-medium">Motor LLM Propio - 100% Nativo</p>
           </div>
         </div>
         <div className="flex items-center gap-3 relative z-10">
@@ -196,59 +161,54 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
             onClick={clearChatHistory}
             disabled={isClearing || messages.length === 0}
             className="hidden md:flex items-center gap-2 bg-slate-800 hover:bg-rose-900/50 hover:text-rose-400 text-slate-400 px-4 py-2 rounded-xl border border-slate-700 transition-colors text-xs font-bold disabled:opacity-50"
-            title="Borrar memoria y empezar en 0"
           >
             {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
             <span>Limpiar Memoria</span>
           </button>
-          <div className="hidden lg:flex items-center gap-2 bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 backdrop-blur-sm">
-            <Zap className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-bold text-emerald-400">Motor DB Activo</span>
+          <div className="hidden lg:flex items-center gap-2 bg-indigo-500/10 px-4 py-2 rounded-xl border border-indigo-500/20 backdrop-blur-sm">
+            <Zap className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-bold text-indigo-400">LLM Local Activo</span>
           </div>
         </div>
       </div>
 
-      {/* Área de Chat Principal */}
+      {/* Área de Chat */}
       <div className="flex-1 bg-white border-x border-slate-200 flex flex-col overflow-hidden relative shadow-sm">
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
           
-          {/* Mensaje de Bienvenida si el chat está en 0 */}
           {messages.length === 0 && !isTyping && (
             <div className="flex w-full justify-start animate-in slide-in-from-bottom-2">
               <div className="flex gap-3 max-w-[85%] md:max-w-[70%] flex-row">
                 <div className="shrink-0 mt-auto">
                   <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-slate-800 flex items-center justify-center shadow-sm">
-                    <Bot className="w-4 h-4 text-emerald-400" />
+                    <Bot className="w-4 h-4 text-indigo-400" />
                   </div>
                 </div>
                 <div className="flex flex-col items-start">
                   <div className="p-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-slate-50 border border-slate-100 text-slate-700 rounded-bl-none">
-                    ¡Hola, {currentUser.name}! La memoria de nuestro chat ha sido inicializada en 0. Soy tu Tutor IA de INTECA y estoy conectado a servidores de conocimiento para responder cualquier duda técnica o científica con precisión. ¿En qué te ayudo hoy?
+                    ¡Bienvenido al nuevo ecosistema, {currentUser.name}! He sido desconectado de sistemas externos y ahora corro 100% nativo dentro del campus de INTECA. ¿En qué te puedo ayudar hoy?
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Renderizado de mensajes reales desde Firebase */}
           {messages.map((msg) => (
             <div key={msg.id} className={`flex w-full ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex gap-3 max-w-[85%] md:max-w-[70%] ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                
                 <div className="shrink-0 mt-auto">
                   {msg.sender === 'user' ? (
-                    <img src={currentUser.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=inteca"} alt="User" className="w-8 h-8 rounded-full border-2 border-emerald-500 shadow-sm object-cover bg-white" />
+                    <img src={currentUser.avatar || "https://api.dicebear.com/7.x/avataaars/svg?seed=inteca"} alt="User" className="w-8 h-8 rounded-full border-2 border-indigo-500 shadow-sm object-cover bg-white" />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-slate-800 flex items-center justify-center shadow-sm">
-                      <Bot className="w-4 h-4 text-emerald-400" />
+                      <Bot className="w-4 h-4 text-indigo-400" />
                     </div>
                   )}
                 </div>
-
                 <div className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
                   <div className={`p-4 rounded-2xl shadow-sm text-sm leading-relaxed whitespace-pre-wrap ${
                     msg.sender === 'user' 
-                      ? 'bg-emerald-600 text-white rounded-br-none' 
+                      ? 'bg-indigo-600 text-white rounded-br-none' 
                       : 'bg-slate-50 border border-slate-100 text-slate-700 rounded-bl-none'
                   }`}>
                     {msg.text}
@@ -259,13 +219,12 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
             </div>
           ))}
 
-          {/* Indicador de "Escribiendo..." */}
           {isTyping && (
             <div className="flex w-full justify-start">
               <div className="flex gap-3 max-w-[85%]">
                 <div className="shrink-0 mt-auto">
                   <div className="w-8 h-8 rounded-full bg-slate-900 border-2 border-slate-800 flex items-center justify-center shadow-sm">
-                    <Bot className="w-4 h-4 text-emerald-400" />
+                    <Bot className="w-4 h-4 text-indigo-400" />
                   </div>
                 </div>
                 <div className="bg-slate-50 border border-slate-100 p-4 rounded-2xl rounded-bl-none shadow-sm flex items-center gap-1.5 h-12 w-16">
@@ -279,7 +238,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Sugerencias Rápidas (Solo aparecen si el chat está vacío) */}
         {messages.length === 0 && !isTyping && (
           <div className="px-6 py-4 flex flex-wrap gap-2 justify-center bg-gradient-to-t from-white to-transparent absolute bottom-0 w-full pb-6">
             {quickPrompts.map((prompt, idx) => {
@@ -288,7 +246,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
                 <button
                   key={idx}
                   onClick={() => handleSendMessage(prompt.text)}
-                  className="flex items-center gap-2 bg-white border border-slate-200 hover:border-emerald-500 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm"
+                  className="flex items-center gap-2 bg-white border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm"
                 >
                   <Icon className="w-4 h-4" />
                   {prompt.text}
@@ -299,17 +257,16 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
         )}
       </div>
 
-      {/* Input Area */}
+      {/* Input */}
       <div className="bg-white border border-t-0 border-slate-200 rounded-b-3xl p-4 shadow-sm z-10 shrink-0">
         <form 
           onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
-          className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-emerald-500 focus-within:bg-white transition-all"
+          className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:bg-white transition-all"
         >
           <button 
             type="button"
             onClick={clearChatHistory}
             className="md:hidden p-3 text-slate-400 hover:text-rose-500 transition-colors"
-            title="Limpiar Memoria"
           >
             <Trash2 className="w-5 h-5" />
           </button>
@@ -325,7 +282,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           <button
             type="submit"
             disabled={!inputMessage.trim() || isTyping}
-            className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:hover:bg-slate-900 shrink-0 shadow-md"
+            className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:hover:bg-slate-900 shrink-0 shadow-md"
           >
             <Send className="w-5 h-5 ml-1" />
           </button>
