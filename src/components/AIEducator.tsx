@@ -85,10 +85,12 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
 
     // B. Consultar a la API REAL de Google Gemini
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      // Limpieza EXTREMA de la llave: elimina espacios y cualquier comilla accidental
+      const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const apiKey = rawApiKey.replace(/['"]/g, '').trim();
 
-      // Validación estricta de lectura del .env
-      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey.trim() === "") {
+      // Validación estricta de lectura del .env o GitHub Secrets
+      if (!apiKey || apiKey === "TU_LLAVE_REAL_AQUI" || apiKey === "") {
         throw new Error("API_KEY_MISSING");
       }
 
@@ -106,7 +108,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       if (!response.ok) {
         const errorData = await response.json();
         console.error("Detalles del rechazo de Google Gemini:", errorData);
-        throw new Error("API_FETCH_ERROR");
+        // Capturamos el mensaje exacto de Google para mostrarlo en el chat
+        throw new Error(`API_FETCH_ERROR|${errorData.error?.message || 'Error desconocido en servidores de Google'}`);
       }
 
       const data = await response.json();
@@ -128,8 +131,9 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       
       if (error.message === "API_KEY_MISSING") {
         fallbackReply = `[ALERTA DE SISTEMA]: No detecto tu llave de Gemini. Esto ocurre casi siempre porque necesitas REINICIAR el servidor. Ve a la terminal de Visual Studio Code, presiona 'Ctrl + C' para apagarlo y luego escribe 'npm run dev' para volverlo a encender. Así leeré tu archivo .env.`;
-      } else if (error.message === "API_FETCH_ERROR") {
-        fallbackReply = `[ALERTA DE CONEXIÓN]: Google ha rechazado la llave. Verifica que en tu archivo .env la llave no tenga espacios en blanco al inicio o al final.`;
+      } else if (error.message.startsWith("API_FETCH_ERROR|")) {
+        const googleErrorMsg = error.message.split("|")[1];
+        fallbackReply = `[ALERTA DE CONEXIÓN]: Google ha rechazado la conexión.\n\nMOTIVO EXACTO DEVUELTO POR GOOGLE:\n"${googleErrorMsg}"\n\n(Toma una captura de esto, es la causa real del problema).`;
       }
 
       await addDoc(chatCollectionRef, {
@@ -328,4 +332,4 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       </div>
     </div>
   );
-}                                             
+}
