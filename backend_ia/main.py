@@ -1,5 +1,6 @@
 import os
 import glob
+import threading  # <-- NUEVO: Herramienta de Multitarea
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,7 +10,6 @@ from dotenv import load_dotenv
 # Dependencias para leer documentos
 from pypdf import PdfReader
 import docx
-import pandas as pd
 from rank_bm25 import BM25Okapi  # <-- NUEVO: El buscador de velocidad luz
 
 # Cargar variables ocultas de seguridad
@@ -17,8 +17,8 @@ load_dotenv()
 
 # 1. Inicializamos la aplicación
 app = FastAPI(
-    title="Motor IA INTECA - Experto en Salud (Ultrarrápido)",
-    version="0.3.0"
+    title="Motor IA INTECA - Experto en Salud (Ultrarrápido y Ligero)",
+    version="0.4.0"
 )
 
 # 2. Configuramos la seguridad (CORS) vital para el frontend
@@ -39,13 +39,14 @@ class ChatRequest(BaseModel):
     message: str
     studentName: str
 
-# --- NUEVO: SISTEMA DE MEMORIA FRAGMENTADA Y BÚSQUEDA RÁPIDA ---
+# --- NUEVO: SISTEMA DE MEMORIA FRAGMENTADA Y MULTITAREA ---
 # Variables globales para guardar la memoria
 CHUNKS_CONOCIMIENTO = []
 BUSCADOR_BM25 = None
+ESTADO_MEMORIA = "Cargando"  # <-- NUEVO: Control para saber si ya terminó de leer
 
 def cargar_base_conocimiento():
-    global CHUNKS_CONOCIMIENTO, BUSCADOR_BM25
+    global CHUNKS_CONOCIMIENTO, BUSCADOR_BM25, ESTADO_MEMORIA
     texto_completo = ""
     ruta_carpeta = "documentos_inteca"
     
@@ -54,6 +55,7 @@ def cargar_base_conocimiento():
         os.makedirs(ruta_carpeta)
         CHUNKS_CONOCIMIENTO = ["Aún no hay documentos en la biblioteca."]
         BUSCADOR_BM25 = BM25Okapi([["vacio"]])
+        ESTADO_MEMORIA = "Lista (Sin documentos)"
         return
 
     print("Picando y optimizando documentos de la biblioteca secreta...")
@@ -77,19 +79,12 @@ def cargar_base_conocimiento():
         except Exception as e:
             print(f"Error leyendo {archivo_word}: {e}")
             
-    # Leer archivos Excel (.xlsx)
-    for archivo_excel in glob.glob(f"{ruta_carpeta}/*.xlsx"):
-        try:
-            df_dict = pd.read_excel(archivo_excel, sheet_name=None)
-            for nombre_hoja, df in df_dict.items():
-                texto_completo += f" Hoja de Excel: {nombre_hoja} "
-                texto_completo += df.to_string(index=False) + " "
-        except Exception as e:
-            print(f"Error leyendo {archivo_excel}: {e}")
+    # SE ELIMINÓ LA LÓGICA DE EXCEL AQUÍ PARA ALIGERAR EL SERVIDOR
             
     if not texto_completo.strip():
         CHUNKS_CONOCIMIENTO = ["Aún no hay documentos legibles en la biblioteca."]
         BUSCADOR_BM25 = BM25Okapi([["vacio"]])
+        ESTADO_MEMORIA = "Lista (Documentos vacíos)"
         return
         
     # --- LA MAGIA DE LA VELOCIDAD ---
@@ -102,21 +97,33 @@ def cargar_base_conocimiento():
     corpus_tokenizado = [pedazo.lower().split() for pedazo in CHUNKS_CONOCIMIENTO]
     BUSCADOR_BM25 = BM25Okapi(corpus_tokenizado)
     
+    ESTADO_MEMORIA = "Lista"
     print(f"¡Memoria lista! Se generaron {len(CHUNKS_CONOCIMIENTO)} fragmentos de conocimiento experto.")
 
-# Cargamos y fragmentamos el conocimiento UNA SOLA VEZ al encender el servidor
-cargar_base_conocimiento()
+# --- NUEVO: Encender el servidor instantáneamente y mandar a leer en segundo plano ---
+@app.on_event("startup")
+def iniciar_lectura():
+    hilo = threading.Thread(target=cargar_base_conocimiento)
+    hilo.start()
 # -----------------------------------------------------------------
 
 # 5. Ruta de prueba
 @app.get("/")
 def estado_motor():
-    return {"estado": "INTECA LLM encendido, optimizado con buscador BM25 de velocidad luz"}
+    return {"estado": f"INTECA LLM encendido. Estado de memoria: {ESTADO_MEMORIA}"}
 
 # 6. EL PUENTE PRINCIPAL: Conexión con IA Real
 @app.post("/api/chat")
 def procesar_chat(request: ChatRequest):
     try:
+        # --- NUEVO: Escudo Anticolapso ---
+        # Si el estudiante pregunta mientras la IA sigue leyendo los libros
+        if ESTADO_MEMORIA == "Cargando":
+            return {"respuesta": f"¡Hola, {request.studentName}! Me acaban de encender y estoy repasando la biblioteca oficial de INTECA a toda velocidad. 📚 Dame unos 30 segunditos y vuelve a enviarme tu pregunta."}
+
+        if not BUSCADOR_BM25:
+             return {"respuesta": "Hubo un error cargando los documentos oficiales."}
+
         # 1. BÚSQUEDA INTELIGENTE: Extraemos solo los 5 pedazos de texto más relevantes a la pregunta
         pregunta_tokenizada = request.message.lower().split()
         pedazos_relevantes = BUSCADOR_BM25.get_top_n(pregunta_tokenizada, CHUNKS_CONOCIMIENTO, n=5)
@@ -160,4 +167,4 @@ def procesar_chat(request: ChatRequest):
         return {"respuesta": respuesta_ia}
 
     except Exception as e:
-        return {"respuesta": f"Error al conectar con la IA: {str(e)}"} 
+        return {"respuesta": f"Error al conectar con la IA: {str(e)}"}

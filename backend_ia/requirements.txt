@@ -5,6 +5,4 @@ python-dotenv
 pydantic
 pypdf
 python-docx
-pandas
-openpyxl
-rank-bm25 
+rank-bm25
