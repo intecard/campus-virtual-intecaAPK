@@ -1,6 +1,7 @@
 import os
 import glob
-import threading  # <-- NUEVO: Herramienta de Multitarea
+import threading
+import time  # <-- NUEVO: Herramienta para esperar en silencio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,7 +11,7 @@ from dotenv import load_dotenv
 # Dependencias para leer documentos
 from pypdf import PdfReader
 import docx
-from rank_bm25 import BM25Okapi  # <-- NUEVO: El buscador de velocidad luz
+from rank_bm25 import BM25Okapi
 
 # Cargar variables ocultas de seguridad
 load_dotenv()
@@ -18,7 +19,7 @@ load_dotenv()
 # 1. Inicializamos la aplicación
 app = FastAPI(
     title="Motor IA INTECA - Experto en Salud (Ultrarrápido y Ligero)",
-    version="0.4.0"
+    version="0.4.1"
 )
 
 # 2. Configuramos la seguridad (CORS) vital para el frontend
@@ -39,18 +40,16 @@ class ChatRequest(BaseModel):
     message: str
     studentName: str
 
-# --- NUEVO: SISTEMA DE MEMORIA FRAGMENTADA Y MULTITAREA ---
-# Variables globales para guardar la memoria
+# --- SISTEMA DE MEMORIA FRAGMENTADA Y MULTITAREA ---
 CHUNKS_CONOCIMIENTO = []
 BUSCADOR_BM25 = None
-ESTADO_MEMORIA = "Cargando"  # <-- NUEVO: Control para saber si ya terminó de leer
+ESTADO_MEMORIA = "Cargando"
 
 def cargar_base_conocimiento():
     global CHUNKS_CONOCIMIENTO, BUSCADOR_BM25, ESTADO_MEMORIA
     texto_completo = ""
     ruta_carpeta = "documentos_inteca"
     
-    # Si la carpeta no existe, prevenimos el error
     if not os.path.exists(ruta_carpeta):
         os.makedirs(ruta_carpeta)
         CHUNKS_CONOCIMIENTO = ["Aún no hay documentos en la biblioteca."]
@@ -79,15 +78,12 @@ def cargar_base_conocimiento():
         except Exception as e:
             print(f"Error leyendo {archivo_word}: {e}")
             
-    # SE ELIMINÓ LA LÓGICA DE EXCEL AQUÍ PARA ALIGERAR EL SERVIDOR
-            
     if not texto_completo.strip():
         CHUNKS_CONOCIMIENTO = ["Aún no hay documentos legibles en la biblioteca."]
         BUSCADOR_BM25 = BM25Okapi([["vacio"]])
         ESTADO_MEMORIA = "Lista (Documentos vacíos)"
         return
         
-    # --- LA MAGIA DE LA VELOCIDAD ---
     # Cortamos el texto gigante en pedacitos de ~150 palabras
     palabras = texto_completo.split()
     tamano_pedazo = 150 
@@ -100,7 +96,7 @@ def cargar_base_conocimiento():
     ESTADO_MEMORIA = "Lista"
     print(f"¡Memoria lista! Se generaron {len(CHUNKS_CONOCIMIENTO)} fragmentos de conocimiento experto.")
 
-# --- NUEVO: Encender el servidor instantáneamente y mandar a leer en segundo plano ---
+# Encender el servidor instantáneamente y mandar a leer en segundo plano
 @app.on_event("startup")
 def iniciar_lectura():
     hilo = threading.Thread(target=cargar_base_conocimiento)
@@ -116,22 +112,22 @@ def estado_motor():
 @app.post("/api/chat")
 def procesar_chat(request: ChatRequest):
     try:
-        # --- NUEVO: Escudo Anticolapso ---
-        # Si el estudiante pregunta mientras la IA sigue leyendo los libros
-        if ESTADO_MEMORIA == "Cargando":
-            return {"respuesta": f"¡Hola, {request.studentName}! Me acaban de encender y estoy repasando la biblioteca oficial de INTECA a toda velocidad. 📚 Dame unos 30 segunditos y vuelve a enviarme tu pregunta."}
+        # --- NUEVO CORRECCIÓN 1: Espera silenciosa ---
+        # Si la IA sigue leyendo los libros, el código simplemente pausará 
+        # en silencio un segundo a la vez hasta que esté lista, sin darle excusas al estudiante.
+        while ESTADO_MEMORIA == "Cargando":
+            time.sleep(1)
 
         if not BUSCADOR_BM25:
              return {"respuesta": "Hubo un error cargando los documentos oficiales."}
 
-        # 1. BÚSQUEDA INTELIGENTE: Extraemos solo los 5 pedazos de texto más relevantes a la pregunta
+        # BÚSQUEDA INTELIGENTE
         pregunta_tokenizada = request.message.lower().split()
         pedazos_relevantes = BUSCADOR_BM25.get_top_n(pregunta_tokenizada, CHUNKS_CONOCIMIENTO, n=5)
         
-        # Unimos esos 5 pedacitos para mandárselos a la IA
         contexto_filtrado = "\n\n---\n\n".join(pedazos_relevantes)
 
-        # Construimos el cerebro de la IA
+        # --- NUEVO CORRECCIÓN 2: Reglas de comportamiento estrictas ---
         instrucciones_sistema = f"""
         Eres el Profesor y Asistente Virtual Inteligente del Campus Virtual INTECA. 
         Responde siempre de manera amable, educativa, clara y motivadora.
@@ -139,14 +135,14 @@ def procesar_chat(request: ChatRequest):
         ERES UN EXPERTO ABSOLUTO en el sistema de salud de la República Dominicana, 
         la Ley 87-01, el Plan Básico de Salud y las normas de INTECA.
         
-        UTILIZA EXCLUSIVAMENTE ESTA INFORMACIÓN ESPECÍFICA PARA RESPONDER:
+        AQUÍ TIENES LA INFORMACIÓN PARA RESPONDER:
         {contexto_filtrado}
         
-        Regla de oro: Si el estudiante pregunta algo sobre leyes, planes de salud o reglas de INTECA, 
-        responde basándote ÚNICA Y EXCLUSIVAMENTE en la información específica que te acabo de dar. 
-        Si la respuesta está en los documentos, dásela detallada. Si te preguntan algo fuera de tus 
-        documentos o de salud de otro país, responde cortésmente que tu especialidad es el sistema 
-        de salud dominicano y el contenido de INTECA.
+        REGLAS ESTRICTAS DE COMPORTAMIENTO:
+        1. Responde de forma directa, exacta y precisa a lo que se te pregunta.
+        2. BAJO NINGUNA CIRCUNSTANCIA menciones que estás leyendo un documento, texto, catálogo o base de datos.
+        3. ESTÁ TOTALMENTE PROHIBIDO usar frases como "Según el documento proporcionado", "Después de revisar", "Encontré que", o similares. Asume la información como tu propio conocimiento.
+        4. Si te preguntan algo fuera del sistema de salud dominicano o de INTECA, responde cortésmente que tu especialidad se centra exclusivamente en el sistema de salud dominicano y el contenido de INTECA.
         """
 
         chat_completion = client.chat.completions.create(
