@@ -16,10 +16,13 @@ import {
   Copy,
   CheckCircle2
 } from "lucide-react";
-import { db, storage, logUserActivity } from "../firebase";
+import { db, logUserActivity } from "../firebase";
 import { collection, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp } from "firebase/firestore";
-import { ref, getDownloadURL, deleteObject, uploadBytesResumable } from "firebase/storage";
 import { UserProfile } from "../types";
+
+// 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
+const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
+const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
 
 interface FilesViewProps {
   currentUser?: UserProfile; 
@@ -96,7 +99,7 @@ export default function FilesView({ currentUser }: FilesViewProps) {
 
   const filteredFiles = activeDrive === 'All' ? files : files.filter(f => f.source === activeDrive);
 
-  // 2. SUBIR NUEVO ARCHIVO FÍSICO A FIREBASE STORAGE
+  // 2. SUBIR NUEVO ARCHIVO FÍSICO A CLOUDINARY
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) return;
@@ -104,68 +107,90 @@ export default function FilesView({ currentUser }: FilesViewProps) {
     setUploading(true);
     setUploadProgress(0);
 
-    try {
-      const storagePath = `cloud_files/${Date.now()}_${selectedFile.name.replace(/\s+/g, '_')}`;
-      const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, selectedFile);
+    // Endpoint "auto" permite subir PDFs, Word, Imágenes, Videos, Zips, etc.
+    const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          setUploadProgress(Math.round(progress));
-        }, 
-        (error) => {
-          console.error("Error subiendo archivo:", error);
-          alert("Hubo un error al subir el archivo. Verifica tu conexión.");
-          setUploading(false);
-        }, 
-        async () => {
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          const lowerName = selectedFile.name.toLowerCase();
-          const type = lowerName.endsWith(".pdf") ? "pdf" 
-                    : lowerName.match(/\.(png|jpg|jpeg|gif)$/) ? "image" 
-                    : lowerName.match(/\.(mp4|mov|webm)$/) ? "video" 
-                    : lowerName.match(/\.(xls|xlsx|csv)$/) ? "xls" 
-                    : lowerName.match(/\.(zip|rar|tar)$/) ? "zip"
-                    : "doc";
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url, true);
 
-          const sizeInMB = selectedFile.size / (1024 * 1024);
-          const displaySize = sizeInMB > 1 
-            ? `${sizeInMB.toFixed(2)} MB` 
-            : `${(selectedFile.size / 1024).toFixed(0)} KB`;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = (event.loaded / event.total) * 100;
+        setUploadProgress(percentComplete);
+      }
+    };
 
-          await addDoc(collection(db, "cloud_files"), {
-            name: selectedFile.name,
-            url: downloadURL,
-            storagePath: storagePath,
-            source: 'INTECA Cloud',
-            type,
-            size: displaySize,
-            modifiedAt: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
-            version: 1,
-            uploaderId: safeUser.id,
-            uploadedBy: safeUser.name,
-            uploaderRole: safeUser.role,
-            createdAt: serverTimestamp()
-          });
+    xhr.onload = async () => {
+      if (xhr.status === 200) {
+        const data = JSON.parse(xhr.responseText);
+        if (data.secure_url) {
+          try {
+            const downloadURL = data.secure_url;
+            const lowerName = selectedFile.name.toLowerCase();
+            const type = lowerName.endsWith(".pdf") ? "pdf" 
+                      : lowerName.match(/\.(png|jpg|jpeg|gif)$/) ? "image" 
+                      : lowerName.match(/\.(mp4|mov|webm)$/) ? "video" 
+                      : lowerName.match(/\.(xls|xlsx|csv)$/) ? "xls" 
+                      : lowerName.match(/\.(zip|rar|tar)$/) ? "zip"
+                      : "doc";
 
-          if (typeof logUserActivity === 'function') {
-            await logUserActivity(
-              safeUser.id, safeUser.name, safeUser.email, safeUser.role,
-              "FILE_UPLOAD", `Subió el archivo: ${selectedFile.name}`
-            );
+            const sizeInMB = selectedFile.size / (1024 * 1024);
+            const displaySize = sizeInMB > 1 
+              ? `${sizeInMB.toFixed(2)} MB` 
+              : `${(selectedFile.size / 1024).toFixed(0)} KB`;
+
+            // Guardar solo la referencia en Firebase para que sea ultrarrápido
+            await addDoc(collection(db, "cloud_files"), {
+              name: selectedFile.name,
+              url: downloadURL,
+              source: 'INTECA Cloud',
+              type,
+              size: displaySize,
+              modifiedAt: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
+              version: 1,
+              uploaderId: safeUser.id,
+              uploadedBy: safeUser.name,
+              uploaderRole: safeUser.role,
+              createdAt: serverTimestamp()
+            });
+
+            if (typeof logUserActivity === 'function') {
+              await logUserActivity(
+                safeUser.id, safeUser.name, safeUser.email, safeUser.role,
+                "FILE_UPLOAD", `Subió el archivo: ${selectedFile.name}`
+              );
+            }
+            
+            setShowUploadModal(false);
+            setSelectedFile(null);
+            setUploading(false);
+            setUploadProgress(0);
+          } catch (dbError) {
+            console.error("Error guardando en Firestore:", dbError);
+            alert("El archivo subió a la Nube, pero hubo un error al registrarlo en la plataforma.");
+            setUploading(false);
+            setUploadProgress(0);
           }
-          
-          setShowUploadModal(false);
-          setSelectedFile(null);
-          setUploading(false);
-          setUploadProgress(0);
         }
-      );
-    } catch (error) {
-      console.error("Error:", error);
+      } else {
+        const errorData = JSON.parse(xhr.responseText);
+        alert("Error de Cloudinary: " + (errorData.error?.message || "Límite de tamaño excedido."));
+        setUploading(false);
+        setUploadProgress(0);
+      }
+    };
+
+    xhr.onerror = () => {
+      console.error("Error en la conexión.");
+      alert("Fallo de conexión. No se pudo subir el archivo.");
       setUploading(false);
-    }
+      setUploadProgress(0);
+    };
+
+    xhr.send(formData);
   };
 
   // 3. ELIMINAR ARCHIVO (CONTROL DE ROLES)
@@ -180,11 +205,6 @@ export default function FilesView({ currentUser }: FilesViewProps) {
     if (window.confirm("¿Seguro que deseas eliminar este archivo permanentemente?")) {
       try {
         await deleteDoc(doc(db, "cloud_files", file.id));
-        
-        if (file.storagePath) {
-          const storageRef = ref(storage, file.storagePath);
-          await deleteObject(storageRef);
-        }
 
         if (typeof logUserActivity === 'function') {
           await logUserActivity(
@@ -466,8 +486,8 @@ export default function FilesView({ currentUser }: FilesViewProps) {
               {uploading && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] font-bold text-emerald-600">
-                    <span>Subiendo...</span>
-                    <span>{uploadProgress}%</span>
+                    <span>Subiendo a la Nube...</span>
+                    <span>{Math.round(uploadProgress)}%</span>
                   </div>
                   <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                     <div className="bg-emerald-500 h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>

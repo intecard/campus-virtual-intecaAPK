@@ -9,7 +9,7 @@ import {
   Cpu,
   Trash2,
   Loader2,
-  Plus // <-- NUEVO: Ícono para el botón de Nuevo Chat
+  Plus
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase";
@@ -63,7 +63,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     setInputMessage(""); 
     setIsTyping(true);
 
-    // 1. Guardar mensaje del usuario en Firebase
     try {
       await addDoc(chatCollectionRef, {
         sender: "user",
@@ -75,7 +74,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       console.error("Error:", error);
     }
 
-    // 2. Consultar a NUESTRO PROPIO MOTOR LLM (Nube Render)
     try {
       const response = await fetch("https://motor-inteca.onrender.com/api/chat", {
         method: "POST",
@@ -93,7 +91,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       const data = await response.json();
       const aiReply = data.respuesta;
       
-      // 3. Guardar respuesta de la IA
       await addDoc(chatCollectionRef, {
         sender: "ai",
         text: aiReply,
@@ -117,7 +114,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     }
   };
 
-  // --- NUEVO: Función mejorada para Nuevo Chat ---
   const handleNewChat = async () => {
     if (messages.length === 0) return;
     if (window.confirm("¿Deseas iniciar un nuevo chat? Esto borrará la conversación anterior.")) {
@@ -143,11 +139,11 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   return (
     <div className="h-full flex flex-col animate-in fade-in duration-500 pb-10">
       
-      {/* Header */}
+      {/* Header (Limpio, sin el botón de borrar aquí arriba) */}
       <div className="bg-slate-900 rounded-t-3xl p-6 flex items-center justify-between shadow-xl relative overflow-hidden border border-slate-800 shrink-0">
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl"></div>
         <div className="relative z-10 flex items-center gap-4">
-          <div className="w-14 h-14 bg-indigo-500/20 border border-indigo-500/50 rounded-2xl flex items-center justify-center relative shadow-inner shadow-indigo-500/20">
+          <div className="w-14 h-14 bg-indigo-500/20 border border-indigo-500/50 rounded-2xl flex items-center justify-center relative shadow-inner shadow-indigo-500/20 shrink-0">
             <Bot className="w-8 h-8 text-indigo-400" />
             <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-indigo-500 border-2 border-slate-900 rounded-full animate-pulse"></span>
           </div>
@@ -159,17 +155,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           </div>
         </div>
         <div className="flex items-center gap-3 relative z-10">
-          
-          {/* NUEVO: Botón Premium de Nuevo Chat (Desktop) */}
-          <button 
-            onClick={handleNewChat}
-            disabled={isClearing || messages.length === 0}
-            className="hidden md:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl transition-colors text-xs font-bold shadow-md disabled:opacity-50"
-          >
-            {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-            <span>Nuevo Chat</span>
-          </button>
-
           <div className="hidden lg:flex items-center gap-2 bg-indigo-500/10 px-4 py-2 rounded-xl border border-indigo-500/20 backdrop-blur-sm">
             <Zap className="w-4 h-4 text-indigo-400" />
             <span className="text-xs font-bold text-indigo-400">LLM Local Activo</span>
@@ -266,19 +251,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       <div className="bg-white border border-t-0 border-slate-200 rounded-b-3xl p-4 shadow-sm z-10 shrink-0">
         <form 
           onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
-          className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:bg-white transition-all"
+          className="flex items-center gap-2 md:gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:bg-white transition-all"
         >
-          {/* NUEVO: Botón de Nuevo Chat (Móvil) */}
-          <button 
-            type="button"
-            onClick={handleNewChat}
-            disabled={isClearing || messages.length === 0}
-            className="md:hidden p-3 text-slate-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
-            title="Nuevo Chat"
-          >
-            {isClearing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-          </button>
-          
           <input
             type="text"
             value={inputMessage}
@@ -287,12 +261,26 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
             className="flex-1 bg-transparent border-none focus:ring-0 text-sm px-2 md:px-3 text-slate-700 outline-none"
             disabled={isTyping}
           />
+          
+          {/* 1. Botón de Enviar (Primero) */}
           <button
             type="submit"
             disabled={!inputMessage.trim() || isTyping}
-            className="w-12 h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:hover:bg-slate-900 shrink-0 shadow-md"
+            className="w-10 h-10 md:w-12 md:h-12 bg-slate-900 text-white rounded-xl flex items-center justify-center hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:hover:bg-slate-900 shrink-0 shadow-md"
+            title="Enviar mensaje"
           >
-            <Send className="w-5 h-5 ml-1" />
+            <Send className="w-4 h-4 md:w-5 md:h-5 ml-1" />
+          </button>
+
+          {/* 2. Botón de Nuevo Chat (A la derecha, siempre visible) */}
+          <button 
+            type="button"
+            onClick={handleNewChat}
+            disabled={isClearing || messages.length === 0}
+            className="w-10 h-10 md:w-12 md:h-12 bg-slate-100 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-xl flex items-center justify-center transition-all disabled:opacity-50 shrink-0 shadow-sm"
+            title="Iniciar Nuevo Chat"
+          >
+            {isClearing ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : <Plus className="w-4 h-4 md:w-5 md:h-5" />}
           </button>
         </form>
       </div>

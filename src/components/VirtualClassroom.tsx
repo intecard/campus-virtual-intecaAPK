@@ -27,7 +27,8 @@ import {
   onSnapshot,
   serverTimestamp,
   deleteDoc,
-  doc
+  doc,
+  setDoc // <-- NUEVO: Importado para publicar salas activas
 } from "firebase/firestore";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -53,6 +54,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [newMessage, setNewMessage] = useState("");
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
+  
+  // NUEVO: Estado para el Radar de Clases Activas
+  const [activeLiveClasses, setActiveLiveClasses] = useState<any[]>([]);
 
   // ==========================================
   // ESTADOS DE GRABACIÓN Y SUBIDA DE VIDEO
@@ -75,6 +79,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [brushColor, setBrushColor] = useState('#10b981');
   const [brushSize, setBrushSize] = useState(4);
 
+  // Cargar Grabaciones
   useEffect(() => {
     const q = query(collection(db, "class_recordings"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -86,6 +91,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
+  // NUEVO: Radar de Clases en Vivo
+  useEffect(() => {
+    const q = query(collection(db, "active_classes"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const classes: any[] = [];
+      snapshot.forEach(doc => classes.push({ id: doc.id, ...doc.data() }));
+      setActiveLiveClasses(classes);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Cargar Chat de la Sala
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
@@ -151,8 +168,22 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     triggerPermissionsAndJoin(code);
   };
 
-  const createNewRoom = () => {
+  const createNewRoom = async () => {
     const newCode = Math.random().toString(36).substring(2, 8);
+    
+    // NUEVO: Publicar la sala en el Radar de Estudiantes
+    if (currentUser.role === 'admin' || currentUser.role === 'teacher') {
+      try {
+        await setDoc(doc(db, "active_classes", newCode), {
+          roomCode: newCode,
+          hostName: currentUser.name,
+          createdAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error publicando la sala activa:", error);
+      }
+    }
+    
     triggerPermissionsAndJoin(newCode);
   };
 
@@ -164,6 +195,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
     if (window.confirm(confirmMsg)) {
       if (isHost) {
+        // Notificar al chat que se cierra la sala
         addDoc(collection(db, `class_chat_${roomCode}`), {
           senderName: "Sistema",
           senderRole: "system",
@@ -171,6 +203,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: serverTimestamp()
         }).catch((e) => console.error("Error cerrando sala:", e));
+        
+        // NUEVO: Eliminar la sala del Radar de Estudiantes
+        deleteDoc(doc(db, "active_classes", roomCode)).catch(e => console.error("Error eliminando sala del radar:", e));
       }
 
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -430,10 +465,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Aula Virtual INTECA Live</h1>
         </div>
 
-        {/* 🛡️ CIRUGÍA: Reestructuración de la grilla dependiendo del rol */}
         <div className={`grid grid-cols-1 gap-6 ${(currentUser.role === 'admin' || currentUser.role === 'teacher') ? 'md:grid-cols-2' : 'max-w-xl mx-auto'}`}>
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
-            <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4">
+            <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4 shrink-0">
               <Video className="w-8 h-8" />
             </div>
 
@@ -441,9 +475,49 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
-                  <p className="text-sm text-slate-500 mt-1">Ingresa el código proporcionado por tu profesor o crea una nueva sala instantánea.</p>
+                  <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
                 </div>
-                <form onSubmit={joinRoom} className="space-y-4 pt-4 border-t border-slate-100">
+
+                {/* NUEVO: RADAR DE CLASES ACTIVAS (BOTONES DIRECTOS) */}
+                {activeLiveClasses.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                      Transmisiones en Vivo Ahora
+                    </h3>
+                    <div className="grid gap-3">
+                      {activeLiveClasses.map(liveClass => (
+                        <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                              <Video className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName}</h4>
+                              <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                          >
+                            <Play className="w-4 h-4 fill-current" /> Entrar Directamente
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* SEPARADOR ELEGANTE */}
+                    <div className="relative py-2 flex items-center">
+                      <div className="flex-grow border-t border-slate-100"></div>
+                      <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">O ingreso manual</span>
+                      <div className="flex-grow border-t border-slate-100"></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* FORMULARIO MANUAL INTACTO */}
+                <form onSubmit={joinRoom} className={`space-y-4 ${activeLiveClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
@@ -454,7 +528,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         placeholder="Ej. farma101"
                         className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                       />
-                      <button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
+                      <button type="submit" className="bg-slate-900 hover:bg-black text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
                         Unirse
                       </button>
                     </div>
@@ -464,7 +538,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Transmitir una Clase</h2>
-                <p className="text-sm text-slate-500 mt-1">Como profesor titular, inicia una nueva sala en vivo instantánea y comparte el código con tus alumnos para que ingresen.</p>
+                <p className="text-sm text-slate-500 mt-1">Como profesor titular, inicia una nueva sala en vivo instantánea. Tus alumnos la verán publicada en su panel de ingreso directo.</p>
               </div>
             )}
 
@@ -472,7 +546,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100" : "pt-2"}>
                 <button
                   onClick={createNewRoom}
-                  className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
                 >
                   <Plus className="w-5 h-5" /> Iniciar Nueva Clase en Vivo
                 </button>
@@ -480,7 +554,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             )}
           </div>
 
-          {/* 🛡️ CIRUGÍA: Ocultamos completamente este panel para los estudiantes */}
           {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
             <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">

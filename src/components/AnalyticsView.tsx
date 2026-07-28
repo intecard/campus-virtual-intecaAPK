@@ -100,14 +100,19 @@ export default function AnalyticsView({ currentUser }: AnalyticsViewProps) {
     : [{ name: "Sin datos", Cantidad: 0 }];
 
   // ==========================================
-  // CLASIFICACIÓN DE ALUMNOS (ARRANCAN EN 0)
+  // CLASIFICACIÓN DE ALUMNOS (FILTRO ESTRICTO)
   // ==========================================
-  const topStudents = students.map(st => ({
-    name: st.name,
-    email: st.email,
-    avatar: st.avatar,
-    grade: st.progress || 0 // 100% Real, sin generadores aleatorios
-  })).sort((a, b) => b.grade - a.grade).slice(0, 4);
+  // Solo entran estudiantes reales con avance mayor al 0%
+  const topStudents = students
+    .filter(st => (st.progress || 0) > 0)
+    .map(st => ({
+      name: st.name,
+      email: st.email,
+      avatar: st.avatar,
+      grade: st.progress || 0
+    }))
+    .sort((a, b) => b.grade - a.grade)
+    .slice(0, 4);
 
   const dropoutRiskList = students.map(st => {
     const score = st.riskScore || 0; // 100% Real
@@ -295,7 +300,7 @@ export default function AnalyticsView({ currentUser }: AnalyticsViewProps) {
             </h2>
             <div className="space-y-4">
               {topStudents.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-4">No hay estudiantes registrados.</p>
+                <p className="text-xs text-slate-400 text-center py-4">Aún no hay estudiantes con avances destacados en la plataforma.</p>
               ) : (
                 topStudents.map((student, idx) => (
                   <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100">
