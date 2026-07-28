@@ -8,7 +8,8 @@ import {
   Stethoscope, 
   Cpu,
   Trash2,
-  Loader2
+  Loader2,
+  Plus // <-- NUEVO: Ícono para el botón de Nuevo Chat
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase";
@@ -116,9 +117,10 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     }
   };
 
-  const clearChatHistory = async () => {
+  // --- NUEVO: Función mejorada para Nuevo Chat ---
+  const handleNewChat = async () => {
     if (messages.length === 0) return;
-    if (window.confirm("¿Deseas borrar toda la memoria de esta conversación?")) {
+    if (window.confirm("¿Deseas iniciar un nuevo chat? Esto borrará la conversación anterior.")) {
       setIsClearing(true);
       try {
         const snap = await getDocs(chatCollectionRef);
@@ -157,14 +159,17 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           </div>
         </div>
         <div className="flex items-center gap-3 relative z-10">
+          
+          {/* NUEVO: Botón Premium de Nuevo Chat (Desktop) */}
           <button 
-            onClick={clearChatHistory}
+            onClick={handleNewChat}
             disabled={isClearing || messages.length === 0}
-            className="hidden md:flex items-center gap-2 bg-slate-800 hover:bg-rose-900/50 hover:text-rose-400 text-slate-400 px-4 py-2 rounded-xl border border-slate-700 transition-colors text-xs font-bold disabled:opacity-50"
+            className="hidden md:flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl transition-colors text-xs font-bold shadow-md disabled:opacity-50"
           >
-            {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-            <span>Limpiar Memoria</span>
+            {isClearing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            <span>Nuevo Chat</span>
           </button>
+
           <div className="hidden lg:flex items-center gap-2 bg-indigo-500/10 px-4 py-2 rounded-xl border border-indigo-500/20 backdrop-blur-sm">
             <Zap className="w-4 h-4 text-indigo-400" />
             <span className="text-xs font-bold text-indigo-400">LLM Local Activo</span>
@@ -263,12 +268,15 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
           className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-indigo-500 focus-within:bg-white transition-all"
         >
+          {/* NUEVO: Botón de Nuevo Chat (Móvil) */}
           <button 
             type="button"
-            onClick={clearChatHistory}
-            className="md:hidden p-3 text-slate-400 hover:text-rose-500 transition-colors"
+            onClick={handleNewChat}
+            disabled={isClearing || messages.length === 0}
+            className="md:hidden p-3 text-slate-400 hover:text-indigo-600 transition-colors disabled:opacity-50"
+            title="Nuevo Chat"
           >
-            <Trash2 className="w-5 h-5" />
+            {isClearing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
           </button>
           
           <input
