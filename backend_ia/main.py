@@ -1,7 +1,7 @@
 import os
 import glob
 import threading
-import time  # <-- NUEVO: Herramienta para esperar en silencio
+import time  # <-- Herramienta para esperar en silencio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -18,8 +18,8 @@ load_dotenv()
 
 # 1. Inicializamos la aplicación
 app = FastAPI(
-    title="Motor IA INTECA - Experto en Salud (Ultrarrápido y Ligero)",
-    version="0.4.1"
+    title="Motor IA INTECA - Experto en Salud (Anti-Alucinaciones)",
+    version="0.5.0"
 )
 
 # 2. Configuramos la seguridad (CORS) vital para el frontend
@@ -112,9 +112,7 @@ def estado_motor():
 @app.post("/api/chat")
 def procesar_chat(request: ChatRequest):
     try:
-        # --- NUEVO CORRECCIÓN 1: Espera silenciosa ---
-        # Si la IA sigue leyendo los libros, el código simplemente pausará 
-        # en silencio un segundo a la vez hasta que esté lista, sin darle excusas al estudiante.
+        # Espera silenciosa
         while ESTADO_MEMORIA == "Cargando":
             time.sleep(1)
 
@@ -127,7 +125,7 @@ def procesar_chat(request: ChatRequest):
         
         contexto_filtrado = "\n\n---\n\n".join(pedazos_relevantes)
 
-        # --- NUEVO CORRECCIÓN 2: Reglas de comportamiento estrictas ---
+        # Reglas de comportamiento estrictas y CANDADO DE IGNORANCIA
         instrucciones_sistema = f"""
         Eres el Profesor y Asistente Virtual Inteligente del Campus Virtual INTECA. 
         Responde siempre de manera amable, educativa, clara y motivadora.
@@ -143,6 +141,7 @@ def procesar_chat(request: ChatRequest):
         2. BAJO NINGUNA CIRCUNSTANCIA menciones que estás leyendo un documento, texto, catálogo o base de datos.
         3. ESTÁ TOTALMENTE PROHIBIDO usar frases como "Según el documento proporcionado", "Después de revisar", "Encontré que", o similares. Asume la información como tu propio conocimiento.
         4. Si te preguntan algo fuera del sistema de salud dominicano o de INTECA, responde cortésmente que tu especialidad se centra exclusivamente en el sistema de salud dominicano y el contenido de INTECA.
+        5. CANDADO ESTRICTO: Si la respuesta a la pregunta del estudiante NO SE ENCUENTRA TEXTUALMENTE dentro de la información proporcionada arriba en 'AQUÍ TIENES LA INFORMACIÓN PARA RESPONDER', TIENES ABSOLUTAMENTE PROHIBIDO inventar, suponer, o deducir una respuesta. DEBES responder únicamente diciendo: "Lo siento, esa información no se encuentra en mis manuales oficiales."
         """
 
         chat_completion = client.chat.completions.create(
@@ -157,6 +156,7 @@ def procesar_chat(request: ChatRequest):
                 }
             ],
             model="llama-3.1-8b-instant",
+            temperature=0.0  # <-- NUEVO: Cero creatividad. 100% analítica y precisa.
         )
         
         respuesta_ia = chat_completion.choices[0].message.content
