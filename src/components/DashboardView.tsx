@@ -399,13 +399,13 @@ export default function DashboardView({
             </p>
           </div>
           <div className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center gap-3 backdrop-blur-md min-w-[240px]">
-            <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/30">
+            <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 border border-amber-500/30">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
               <span className="text-[9px] text-slate-400 block font-mono font-bold uppercase tracking-wider">Conformidad Curricular</span>
-              <span className="text-xl font-bold font-mono text-white">100% Verificado</span>
-              <span className="text-[9px] text-slate-500 block font-medium mt-0.5">Estándar HIPAA Activo</span>
+              <span className="text-xl font-bold font-mono text-amber-400">0% Verificado</span>
+              <span className="text-[9px] text-slate-500 block font-medium mt-0.5">{courses.length} Programas Pendientes</span>
             </div>
           </div>
         </div>
@@ -415,7 +415,7 @@ export default function DashboardView({
         <div className="lg:col-span-2 space-y-6">
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Building className="w-5 h-5 text-sky-500" />
-            <span>Estructura de Programas Técnicos Regulados ({courses.length})</span>
+            <span>Estructura de Programas Técnicos ({courses.length})</span>
           </h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -425,7 +425,7 @@ export default function DashboardView({
                   <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <span className="text-[9px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{course?.code || 'S/N'}</span>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full font-bold">Aprobado</span>
+                      <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded-full font-bold">Pendiente de Auditoría</span>
                     </div>
                     <h3 className="font-bold text-slate-900 leading-snug">{course?.title}</h3>
                   </div>
@@ -473,6 +473,10 @@ export default function DashboardView({
     </div>
   );
 
+  // ✅ CORRECCIÓN BLINDADA: Minúsculas y sin espacios para evitar errores con Firebase
+  const currentRole = String(currentUser?.role || '').toLowerCase().trim();
+  const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
+
   return (
     <div id="dashboard-view-root" className="space-y-6">
       <div id="dashboard-header-flex" className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-2">
@@ -486,10 +490,10 @@ export default function DashboardView({
         </div>
       </div>
 
-      {currentUser?.role === 'student' && renderStudentDashboard()}
-      {currentUser?.role === 'teacher' && renderTeacherDashboard()}
-      {currentUser?.role === 'observer' && renderObserverDashboard()}
-      {currentUser?.role === 'admin' && renderAdminDashboard()}
+      {currentRole === 'student' && renderStudentDashboard()}
+      {currentRole === 'teacher' && renderTeacherDashboard()}
+      {isAuditor && renderObserverDashboard()}
+      {currentRole === 'admin' && renderAdminDashboard()}
     </div>
   );
 }

@@ -31,7 +31,7 @@ export default function Sidebar({
 }: SidebarProps) {
   
   // ✅ Convertimos el rol a string de forma segura
-  const currentRole = String(currentUser.role);
+  const currentRole = String(currentUser.role).toLowerCase().trim();
   const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
 
   // ==========================================
@@ -45,9 +45,11 @@ export default function Sidebar({
     { id: 'courses', label: 'Auditoría Académica', icon: ShieldCheck, roles: ['observer', 'auditor'] },
     
     { id: 'classroom', label: 'Aula Virtual', icon: Video, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
-    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'admin', 'observer', 'auditor'] },
-    { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin', 'observer', 'auditor'] },
-    { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
+    // 🔥 CIRUGÍA: Eliminamos roles de auditor de estas tres opciones
+    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'admin'] },
+    { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin'] },
+    { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin'] },
+    
     { id: 'admin', label: 'Auditoría y Roles', icon: Settings, roles: ['admin'] }, 
     { id: 'settings', label: 'Perfil y Config.', icon: Settings, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
   ];
