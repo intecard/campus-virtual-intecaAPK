@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { 
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
-  X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon, Download
+  X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon, Download,
+  ClipboardCheck, BarChart, ShieldCheck
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
 import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp } from "firebase/firestore";
@@ -12,7 +13,6 @@ import { Course, UserProfile } from "../types";
 const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
 const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
 
-// Usamos any en variables locales para evitar conflictos de tipado estricto que rompan la compilación
 interface CoursesViewProps {
   currentUser?: UserProfile | any; 
   courses?: Course[] | any[];
@@ -29,14 +29,17 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     role: "admin"
   };
 
+  // ✅ CORRECCIÓN BLINDADA: Minúsculas y sin espacios para evitar errores con Firebase
+  const currentRole = String(safeUser?.role || '').toLowerCase().trim();
   const isMaster = String(safeUser.email || "").toLowerCase() === "luisramirezescalante1985@gmail.com";
-  const isAdmin = safeUser.role === 'admin' || isMaster;
+  const isAdmin = currentRole === 'admin' || isMaster;
+  const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
 
   // ESTADOS DE NAVEGACIÓN Y VISTAS
   const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio'>('catalog');
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'content' | 'homework' | 'lti'>('content');
+  const [activeSubTab, setActiveSubTab] = useState<'content' | 'homework' | 'lti' | 'audit'>('content');
   
   // ESTADOS DEL CONSTRUCTOR (STUDIO)
   const [isSaving, setIsSaving] = useState(false);
@@ -55,7 +58,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     enrolledStudents: [], modules: []
   });
 
-  // ESTADOS DE TAREAS REALES
+  // ESTADOS DE TAREAS REALES Y AUDITORÍA
   const [homeworkText, setHomeworkText] = useState("");
   const [submittingHomework, setSubmittingHomework] = useState(false);
 
@@ -295,11 +298,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // RENDER 1: CATÁLOGO DE CURSOS
+  // RENDER 1: CATÁLOGO DE CURSOS Y AUDITORÍA
   // ==========================================
   const renderCatalog = () => {
     const safeCourses = Array.isArray(courses) ? courses : [];
-    const displayCourses = isAdmin 
+    // El Auditor ve TODOS los cursos igual que el administrador
+    const displayCourses = (isAdmin || isAuditor) 
       ? safeCourses 
       : safeCourses.filter((c: any) => Array.isArray(c?.enrolledStudents) && c.enrolledStudents.includes(safeUser.id));
 
@@ -307,8 +311,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       <div className="space-y-6 animate-in fade-in duration-500 pb-10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <span className="text-xs font-mono font-bold text-emerald-600 uppercase tracking-wider">Campus Virtual INTECA</span>
-            <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">Catálogo de Programas</h1>
+            <span className={`text-xs font-mono font-bold uppercase tracking-wider ${isAuditor ? 'text-indigo-600' : 'text-emerald-600'}`}>
+              {isAuditor ? 'Módulo de Fiscalización' : 'Campus Virtual INTECA'}
+            </span>
+            <h1 className="text-2xl font-display font-bold text-slate-900 tracking-tight">
+              {isAuditor ? 'Auditoría de Programas' : 'Catálogo de Programas'}
+            </h1>
           </div>
           
           {(isAdmin || safeUser.role === 'teacher') && (
@@ -324,8 +332,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
 
         {displayCourses.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
-            <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-slate-700">No hay cursos disponibles</h3>
+            {isAuditor ? <ShieldCheck className="w-16 h-16 text-indigo-200 mx-auto mb-4" /> : <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />}
+            <h3 className="text-lg font-bold text-slate-700">No hay programas disponibles</h3>
             <p className="text-sm text-slate-500 mt-2">La base de datos está limpia. Comienza a crear programas académicos reales.</p>
           </div>
         ) : (
@@ -335,11 +343,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                 return (
                   <div 
                     key={course?.id}
-                    className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg hover:border-emerald-500/30 transition-all duration-300 flex flex-col justify-between group cursor-pointer relative"
+                    className={`bg-white rounded-3xl border overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col justify-between group cursor-pointer relative ${isAuditor ? 'border-indigo-100 hover:border-indigo-500/30' : 'border-slate-100 hover:border-emerald-500/30'}`}
                     onClick={() => {
                       setSelectedCourse(course);
                       setExpandedModule(course?.modules?.[0]?.id || null);
-                      setActiveSubTab('content');
+                      // Si es auditor, lo mandamos directo a la pestaña de auditoría si quiere, pero contenido es buen default
+                      setActiveSubTab(isAuditor ? 'audit' : 'content');
                       setViewMode('detail');
                     }}
                   >
@@ -364,7 +373,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                       <div className="absolute top-4 left-4 z-20">
                         <button 
                           onClick={(e) => handleDownloadImage(e, course?.image || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=800", course?.title || "curso")}
-                          className="bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-emerald-600 transition-colors"
+                          className={`bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm transition-colors ${isAuditor ? 'hover:text-indigo-600' : 'hover:text-emerald-600'}`}
                           title="Descargar Portada"
                         >
                           <Download className="w-4 h-4" />
@@ -384,7 +393,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                         <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 font-medium">
                           {course?.duration && (
                             <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 rounded-lg px-2 py-1">
-                              <Clock className="w-3.5 h-3.5 text-emerald-500" />
+                              <Clock className={`w-3.5 h-3.5 ${isAuditor ? 'text-indigo-500' : 'text-emerald-500'}`} />
                               <span>Duración: <strong className="text-slate-700">{String(course.duration)}</strong></span>
                             </div>
                           )}
@@ -399,8 +408,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
 
                       <div className="flex justify-between items-center pt-2 border-t border-slate-50">
                         <span className="text-xs text-slate-400 font-medium">Prof. {String(course?.teacher || "No Asignado")}</span>
-                        <button className="bg-emerald-600 text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1">
-                          Acceder <ChevronRight className="w-3 h-3" />
+                        <button className={`${isAuditor ? 'bg-indigo-600' : 'bg-emerald-600'} text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1 transition-colors shadow-sm`}>
+                          {isAuditor ? "Evaluar" : "Acceder"} <ChevronRight className="w-3 h-3" />
                         </button>
                       </div>
                     </div>
@@ -536,25 +545,37 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     return (
       <div className="space-y-6 animate-in fade-in duration-500 pb-10">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
-          <button onClick={() => setViewMode('catalog')} className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-emerald-600 font-bold transition-colors w-fit">
-            <ArrowLeft className="w-4 h-4" /> Volver al Catálogo
+          <button onClick={() => setViewMode('catalog')} className={`flex items-center gap-1.5 text-xs text-slate-500 font-bold transition-colors w-fit ${isAuditor ? 'hover:text-indigo-600' : 'hover:text-emerald-600'}`}>
+            <ArrowLeft className="w-4 h-4" /> Volver
           </button>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded font-mono font-bold border border-emerald-100">{selectedCourse.code}</span>
+            <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border ${isAuditor ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>{selectedCourse.code}</span>
             <h2 className="font-display font-bold text-slate-900 text-base">{selectedCourse.title}</h2>
           </div>
         </div>
 
         <div className="flex border-b border-slate-200 overflow-x-auto scrollbar-none">
-          <button onClick={() => setActiveSubTab('content')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${activeSubTab === 'content' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
-            Contenido Académico
+          {isAuditor && (
+            <button onClick={() => setActiveSubTab('audit')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeSubTab === 'audit' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500'}`}>
+              <ShieldCheck className="w-4 h-4" /> Reporte de Auditoría
+            </button>
+          )}
+          
+          <button onClick={() => setActiveSubTab('content')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeSubTab === 'content' ? (isAuditor ? 'border-indigo-600 text-indigo-600' : 'border-emerald-600 text-emerald-600') : 'border-transparent text-slate-500'}`}>
+            <BookOpen className="w-4 h-4" /> Contenido Académico
           </button>
-          <button onClick={() => setActiveSubTab('homework')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${activeSubTab === 'homework' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
-            Buzón de Tareas
-          </button>
-          <button onClick={() => setActiveSubTab('lti')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors ${activeSubTab === 'lti' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
-            Llaves LTI
-          </button>
+          
+          {!isAuditor && (
+            <button onClick={() => setActiveSubTab('homework')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeSubTab === 'homework' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
+              <FileText className="w-4 h-4" /> Buzón de Tareas
+            </button>
+          )}
+          
+          {(isAdmin || safeUser.role === 'teacher') && (
+            <button onClick={() => setActiveSubTab('lti')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeSubTab === 'lti' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
+              <LinkIcon className="w-4 h-4" /> Llaves LTI
+            </button>
+          )}
         </div>
 
         <div>
@@ -611,6 +632,46 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               </div>
             </div>
           )}
+
+          {/* NUEVO: PESTAÑA EXCLUSIVA DE AUDITORÍA */}
+          {activeSubTab === 'audit' && isAuditor && (
+            <div className="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm space-y-6 animate-in slide-in-from-bottom-2">
+              <div className="border-b border-indigo-50 pb-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <ClipboardCheck className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-bold text-slate-900 text-lg">Fiscalización Metodológica</h3>
+                </div>
+                <p className="text-xs text-slate-500">Evalúe la estructura didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4 bg-slate-50 p-5 rounded-xl border border-slate-200">
+                  <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2"><BarChart className="w-4 h-4 text-sky-500"/> Métricas del Programa</h4>
+                  <ul className="text-xs text-slate-600 space-y-3">
+                    <li className="flex justify-between border-b border-slate-200 pb-2"><span>Profesor Titular:</span> <span className="font-bold">{selectedCourse.teacher}</span></li>
+                    <li className="flex justify-between border-b border-slate-200 pb-2"><span>Alumnos Inscritos:</span> <span className="font-bold">{Array.isArray(selectedCourse.enrolledStudents) ? selectedCourse.enrolledStudents.length : 0}</span></li>
+                    <li className="flex justify-between border-b border-slate-200 pb-2"><span>Nivel Declarado:</span> <span className="font-bold">{selectedCourse.level || 'No especificado'}</span></li>
+                    <li className="flex justify-between border-b border-slate-200 pb-2"><span>Módulos Totales:</span> <span className="font-bold">{Array.isArray(selectedCourse.modules) ? selectedCourse.modules.length : 0}</span></li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="block text-xs font-bold text-slate-700">Notas de Auditoría (Privadas):</label>
+                  <textarea
+                    placeholder="Escriba sus observaciones sobre la calidad del contenido, pertinencia del material y metodología aplicada..."
+                    rows={6}
+                    className="w-full bg-indigo-50/30 border border-indigo-200 rounded-xl p-4 text-xs focus:ring-2 focus:ring-indigo-500 outline-none transition-all leading-relaxed"
+                  />
+                  <div className="flex justify-end">
+                    <button className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl flex items-center gap-2 shadow-md transition-colors">
+                      <Save className="w-4 h-4"/> Guardar Reporte
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
     );

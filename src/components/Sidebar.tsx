@@ -7,7 +7,8 @@ import {
   TrendingUp, 
   FolderClosed, 
   Settings, 
-  LogOut
+  LogOut,
+  ShieldCheck // <-- NUEVO: Ícono exclusivo para la auditoría
 } from "lucide-react";
 import { UserRole, UserProfile } from "../types";
 
@@ -29,29 +30,37 @@ export default function Sidebar({
   isOpen = false 
 }: SidebarProps) {
   
+  // ✅ Convertimos el rol a string de forma segura
+  const currentRole = String(currentUser.role);
+  const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
+
   // ==========================================
-  // MENÚ DE NAVEGACIÓN (CORRECCIÓN DE ROLES)
+  // MENÚ DE NAVEGACIÓN (SEPARACIÓN DE ROLES)
   // ==========================================
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'teacher', 'admin', 'observer'] },
-    { id: 'courses', label: 'Mis Cursos', icon: BookOpen, roles: ['student', 'teacher', 'admin', 'observer'] },
-    // ¡AQUÍ ESTABA EL ERROR! El admin no tenía acceso al Aula Virtual ni al Tutor. Ya se lo agregué:
-    { id: 'classroom', label: 'Aula Virtual', icon: Video, roles: ['student', 'teacher', 'admin', 'observer'] },
-    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'admin', 'observer'] },
-    { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin', 'observer'] },
-    { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin'] },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
+    
+    // 🔥 CIRUGÍA: Separamos completamente "Mis Cursos" de "Auditoría Académica"
+    { id: 'courses', label: 'Mis Cursos', icon: BookOpen, roles: ['student', 'teacher', 'admin'] },
+    { id: 'courses', label: 'Auditoría Académica', icon: ShieldCheck, roles: ['observer', 'auditor'] },
+    
+    { id: 'classroom', label: 'Aula Virtual', icon: Video, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
+    { id: 'tutor', label: 'Tutor IA 24/7', icon: MessageSquare, roles: ['student', 'admin', 'observer', 'auditor'] },
+    { id: 'analytics', label: 'Analíticas', icon: TrendingUp, roles: ['teacher', 'admin', 'observer', 'auditor'] },
+    { id: 'files', label: 'Biblioteca Cloud', icon: FolderClosed, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
     { id: 'admin', label: 'Auditoría y Roles', icon: Settings, roles: ['admin'] }, 
-    { id: 'settings', label: 'Perfil y Config.', icon: Settings, roles: ['student', 'teacher', 'admin', 'observer'] },
+    { id: 'settings', label: 'Perfil y Config.', icon: Settings, roles: ['student', 'teacher', 'admin', 'observer', 'auditor'] },
   ];
 
   // Filtramos el menú para que cada quien vea solo lo que le corresponde
-  const filteredMenu = menuItems.filter(item => item.roles.includes(currentUser.role));
+  const filteredMenu = menuItems.filter(item => item.roles.includes(currentRole));
 
-  const roleLabels: Record<UserRole, string> = {
+  const roleLabels: Record<string, string> = {
     student: 'Estudiante',
-    teacher: 'Profesor Titular',
+    teacher: 'Facilitador Docente',
     admin: 'Administrador TI',
-    observer: 'Auditor / SISALRIL'
+    observer: 'Auditor / SISALRIL',
+    auditor: 'Auditor / SISALRIL'
   };
 
   const handleNavigation = (tabId: string) => {
@@ -104,8 +113,8 @@ export default function Sidebar({
         <div className="overflow-hidden">
           <h4 className="font-semibold text-sm truncate text-white">{currentUser.name}</h4>
           <span className="text-xs text-slate-400 font-medium flex items-center gap-1.5 mt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
-            {roleLabels[currentUser.role]}
+            <span className={`w-1.5 h-1.5 rounded-full animate-pulse inline-block ${isAuditor ? 'bg-indigo-500' : 'bg-emerald-500'}`}></span>
+            {roleLabels[currentRole] || 'Usuario'}
           </span>
         </div>
       </div>
@@ -115,15 +124,19 @@ export default function Sidebar({
         {filteredMenu.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
+          
+          // Color especial para la pestaña activa si es auditor
+          const activeBg = isAuditor && isActive 
+            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' 
+            : isActive 
+              ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50'
+              : 'text-slate-400 hover:bg-slate-800 hover:text-white';
+
           return (
             <button
-              key={item.id}
+              key={`${item.id}-${item.label}`} // Aseguramos un key único combinando id y label
               onClick={() => handleNavigation(item.id)}
-              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
-                isActive 
-                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
+              className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${activeBg}`}
             >
               <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
               <span>{item.label}</span>

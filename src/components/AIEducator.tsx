@@ -3,7 +3,6 @@ import {
   Bot, 
   Send, 
   Sparkles, 
-  Zap, 
   BookOpen, 
   Stethoscope, 
   Cpu,
@@ -139,7 +138,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   return (
     <div className="h-full flex flex-col animate-in fade-in duration-500 pb-10">
       
-      {/* Header (Limpio, sin el botón de borrar aquí arriba) */}
+      {/* Header Limpio y Profesional */}
       <div className="bg-slate-900 rounded-t-3xl p-6 flex items-center justify-between shadow-xl relative overflow-hidden border border-slate-800 shrink-0">
         <div className="absolute -right-10 -top-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl"></div>
         <div className="relative z-10 flex items-center gap-4">
@@ -149,15 +148,8 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           </div>
           <div>
             <h1 className="text-xl font-display font-bold text-white flex items-center gap-2">
-              Profesor IA INTECA <Sparkles className="w-4 h-4 text-indigo-400" />
+              Facilitador Docente IA INTECA <Sparkles className="w-4 h-4 text-indigo-400" />
             </h1>
-            <p className="text-xs text-slate-400 font-medium">Motor LLM Propio - 100% Nativo</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="hidden lg:flex items-center gap-2 bg-indigo-500/10 px-4 py-2 rounded-xl border border-indigo-500/20 backdrop-blur-sm">
-            <Zap className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-bold text-indigo-400">LLM Local Activo</span>
           </div>
         </div>
       </div>
