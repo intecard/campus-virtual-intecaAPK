@@ -176,7 +176,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       try {
         await setDoc(doc(db, "active_classes", newCode), {
           roomCode: newCode,
-          hostName: currentUser.name,
+          hostName: currentUser.name, // Aquí es donde se toma el nombre exacto de la cuenta de quien crea la sala
           createdAt: serverTimestamp()
         });
       } catch (error) {
@@ -493,7 +493,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                               <Video className="w-5 h-5" />
                             </div>
                             <div>
-                              <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName}</h4>
+                              {/* AQUÍ ESTÁ EL BLINDAJE: Toma el nombre dinámico o dice "Facilitador" */}
+                              <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
                               <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
                             </div>
                           </div>
