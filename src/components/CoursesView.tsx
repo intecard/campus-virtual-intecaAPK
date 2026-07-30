@@ -3,10 +3,10 @@ import {
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
   X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon, Download,
-  ClipboardCheck, BarChart, ShieldCheck
+  ClipboardCheck, BarChart, ShieldCheck, Search, Lock
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion } from "firebase/firestore";
 import { Course, UserProfile } from "../types";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -21,7 +21,7 @@ interface CoursesViewProps {
 
 export default function CoursesView({ currentUser, courses = [], setActiveTab }: CoursesViewProps) {
   
-  // 🛡️ AUTOPILOTO DE EMERGENCIA
+  // 🛡️ AUTOPILOTO DE EMERGENCIA Y ROLES ESTRICTOS
   const safeUser = currentUser || {
     id: "admin_master_1985",
     name: "Luis A. Ramirez",
@@ -45,6 +45,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [isSaving, setIsSaving] = useState(false);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
+  
+  // NUEVOS ESTADOS DE BÚSQUEDA
+  const [studentSearch, setStudentSearch] = useState("");
+  const [teacherSearch, setTeacherSearch] = useState("");
 
   // ESTADOS PARA SUBIDAS (CLOUDINARY)
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -53,7 +57,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   // FORMULARIO DE CURSO MULTI-FORMATO
   const [courseForm, setCourseForm] = useState<any>({
     title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
-    level: "Técnico", teacher: safeUser.name, teacherId: safeUser.id, image: "", 
+    level: "Técnico", teacher: "", teacherId: "", image: "", 
     format: "native", contentUrl: "", 
     enrolledStudents: [], modules: []
   });
@@ -83,6 +87,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   // FUNCIONES DEL CONSTRUCTOR (DATOS REALES)
   // ==========================================
   const openStudio = (courseToEdit?: any) => {
+    setStudentSearch("");
+    setTeacherSearch("");
     if (courseToEdit) {
       setCourseForm({
         ...courseToEdit,
@@ -94,7 +100,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     } else {
       setCourseForm({
         title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
-        level: "Técnico", teacher: safeUser.name, teacherId: safeUser.id, image: "", 
+        level: "Técnico", teacher: "", teacherId: "", image: "", 
         format: "native", contentUrl: "", enrolledStudents: [], modules: []
       });
     }
@@ -102,15 +108,14 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const saveCourseToFirebase = async () => {
-    if (!courseForm.title || !courseForm.code) {
-      alert("El título y el código del curso son obligatorios.");
+    if (!courseForm.title || !courseForm.code || !courseForm.teacherId) {
+      alert("El título, el código y el profesor del curso son obligatorios.");
       return;
     }
     setIsSaving(true);
     try {
       if (courseForm.id) {
         await updateDoc(doc(db, "courses", courseForm.id), courseForm);
-        alert("Curso actualizado con éxito.");
       } else {
         await addDoc(collection(db, "courses"), {
           ...courseForm,
@@ -118,7 +123,16 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           studentsCount: Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents.length : 0,
           createdAt: serverTimestamp()
         });
-        alert("¡Curso creado y publicado en INTECA!");
+      }
+
+      // 🔥 ASIGNACIÓN MAESTRA: Sincronizar al profesor en el perfil de cada alumno matriculado 🔥
+      if (isAdmin && courseForm.teacher && Array.isArray(courseForm.enrolledStudents) && courseForm.enrolledStudents.length > 0) {
+        const updatePromises = courseForm.enrolledStudents.map((studentId: string) => 
+          updateDoc(doc(db, "users", studentId), {
+            assignedTeachers: arrayUnion(courseForm.teacher)
+          }).catch(e => console.log("Aviso: No se pudo sincronizar profesor en alumno", e))
+        );
+        await Promise.all(updatePromises);
       }
 
       if (typeof logUserActivity === 'function') {
@@ -128,6 +142,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           `${courseForm.id ? 'Actualizó' : 'Creó'} el curso: ${courseForm.title}`
         );
       }
+      
+      alert(courseForm.id ? "Curso actualizado con éxito." : "¡Curso creado y publicado en INTECA!");
       setViewMode('catalog');
     } catch (error) {
       console.error("Error guardando curso:", error);
@@ -150,6 +166,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const toggleStudentEnrollment = (studentId: string) => {
+    // 🔒 CANDADO ESTRICTO: Solo el administrador puede modificar la matriculación
+    if (!isAdmin) return;
+
     const safeStudents = Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents : [];
     const isEnrolled = safeStudents.includes(studentId);
     if (isEnrolled) {
@@ -302,10 +321,15 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   // ==========================================
   const renderCatalog = () => {
     const safeCourses = Array.isArray(courses) ? courses : [];
-    // El Auditor ve TODOS los cursos igual que el administrador
+    
+    // 🔒 FILTRO ESTRICTO DE VISIBILIDAD DE CURSOS
     const displayCourses = (isAdmin || isAuditor) 
       ? safeCourses 
-      : safeCourses.filter((c: any) => Array.isArray(c?.enrolledStudents) && c.enrolledStudents.includes(safeUser.id));
+      : safeCourses.filter((c: any) => {
+          if (safeUser.role === 'teacher') return c.teacherId === safeUser.id; // Profesor solo ve lo asignado a él
+          if (safeUser.role === 'student') return Array.isArray(c?.enrolledStudents) && c.enrolledStudents.includes(safeUser.id);
+          return false;
+        });
 
     return (
       <div className="space-y-6 animate-in fade-in duration-500 pb-10">
@@ -319,7 +343,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             </h1>
           </div>
           
-          {(isAdmin || safeUser.role === 'teacher') && (
+          {/* 🔒 SÓLO EL ADMINISTRADOR PUEDE CREAR CURSOS NUEVOS */}
+          {isAdmin && (
             <button 
               onClick={() => openStudio()}
               className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
@@ -334,7 +359,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
             {isAuditor ? <ShieldCheck className="w-16 h-16 text-indigo-200 mx-auto mb-4" /> : <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />}
             <h3 className="text-lg font-bold text-slate-700">No hay programas disponibles</h3>
-            <p className="text-sm text-slate-500 mt-2">La base de datos está limpia. Comienza a crear programas académicos reales.</p>
+            <p className="text-sm text-slate-500 mt-2">No tienes cursos asignados o la base de datos está limpia.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -347,16 +372,16 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                     onClick={() => {
                       setSelectedCourse(course);
                       setExpandedModule(course?.modules?.[0]?.id || null);
-                      // Si es auditor, lo mandamos directo a la pestaña de auditoría si quiere, pero contenido es buen default
                       setActiveSubTab(isAuditor ? 'audit' : 'content');
                       setViewMode('detail');
                     }}
                   >
+                    {/* ADMIN Y EL PROFESOR DEL CURSO PUEDEN EDITARLO (ESTUDIO) */}
                     {(isAdmin || safeUser.id === course?.teacherId) && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); openStudio(course); }}
                         className="absolute top-4 right-4 z-20 bg-white/90 backdrop-blur text-slate-800 p-2 rounded-lg shadow-sm hover:text-sky-600 transition-colors"
-                        title="Editar Curso"
+                        title="Ir al Studio (Editar)"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -697,7 +722,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           </div>
           <div className="flex gap-3">
             <button onClick={() => setViewMode('catalog')} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-700">
-              Cancelar
+              Volver al Catálogo
             </button>
             <button 
               onClick={saveCourseToFirebase} 
@@ -717,7 +742,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               <div className="space-y-4 text-sm">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Título del Curso</label>
-                  <input type="text" value={courseForm.title} onChange={e => setCourseForm({...courseForm, title: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:ring-1 focus:ring-emerald-500 outline-none" placeholder="Ej. Redes Informáticas" />
+                  <input type="text" value={courseForm.title} onChange={e => setCourseForm({...courseForm, title: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:ring-1 focus:ring-emerald-500 outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} disabled={!isAdmin} placeholder="Ej. Redes Informáticas" />
                 </div>
 
                 <div>
@@ -725,7 +750,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <select 
                     value={courseForm.format}
                     onChange={(e) => setCourseForm({...courseForm, format: e.target.value})}
-                    className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none cursor-pointer"
+                    disabled={!isAdmin}
+                    className={`w-full bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3 text-xs font-bold focus:ring-1 focus:ring-emerald-500 outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
                   >
                     <option value="native">LMS Nativo (Por Módulos)</option>
                     <option value="learningstudio">Alojado en LearningStudioAI</option>
@@ -735,35 +761,59 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   </select>
                 </div>
 
+                {/* 🔒 BUSCADOR DE PROFESOR - BLOQUEADO PARA DOCENTES 🔒 */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Profesor / Titular</label>
-                  <select 
-                    value={courseForm.teacherId}
-                    onChange={(e) => {
-                      const t = safeTeachers.find(t => t.id === e.target.value);
-                      setCourseForm({...courseForm, teacherId: t?.id || "", teacher: t?.name || ""});
-                    }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-bold outline-none cursor-pointer"
-                  >
-                    <option value="">-- Asignar --</option>
-                    {safeTeachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
+                  {!isAdmin ? (
+                    <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-sm cursor-not-allowed opacity-80">
+                      <Lock className="w-4 h-4 text-slate-400" />
+                      <span className="text-xs font-bold text-slate-600">{courseForm.teacher || "Sin asignar"}</span>
+                    </div>
+                  ) : (
+                    courseForm.teacher ? (
+                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-xl p-3 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="w-4 h-4 text-emerald-600" />
+                          <span className="text-xs font-bold text-emerald-800">{courseForm.teacher}</span>
+                        </div>
+                        <button onClick={() => setCourseForm({...courseForm, teacherId: "", teacher: ""})} className="text-emerald-600 hover:text-emerald-800 transition-colors">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 focus-within:border-emerald-500 transition-all">
+                          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                          <input type="text" placeholder="Asignar facilitador..." value={teacherSearch} onChange={e => setTeacherSearch(e.target.value)} className="w-full bg-transparent p-3 text-xs outline-none" />
+                        </div>
+                        {teacherSearch.trim() !== "" && (
+                          <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                            {safeTeachers.filter(t => t.name.toLowerCase().includes(teacherSearch.toLowerCase())).map(t => (
+                              <div key={t.id} onClick={() => { setCourseForm({...courseForm, teacherId: t.id, teacher: t.name}); setTeacherSearch(""); }} className="p-3 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer border-b border-slate-50 transition-colors">
+                                {t.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  )}
                 </div>
                 
                 <div className="flex gap-3">
                   <div className="flex-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Código</label>
-                    <input type="text" value={courseForm.code} onChange={e => setCourseForm({...courseForm, code: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none" />
+                    <input type="text" disabled={!isAdmin} value={courseForm.code} onChange={e => setCourseForm({...courseForm, code: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} />
                   </div>
                   <div className="flex-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Categoría</label>
-                    <input type="text" value={courseForm.category} onChange={e => setCourseForm({...courseForm, category: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none" />
+                    <input type="text" disabled={!isAdmin} value={courseForm.category} onChange={e => setCourseForm({...courseForm, category: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} />
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Descripción</label>
-                  <textarea rows={3} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none leading-relaxed" />
+                  <textarea rows={3} disabled={!isAdmin} value={courseForm.description} onChange={e => setCourseForm({...courseForm, description: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none leading-relaxed ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} />
                 </div>
 
                 {/* BOTÓN SUBIDA CLOUDINARY PARA PORTADAS */}
@@ -773,12 +823,14 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                     {courseForm.image ? (
                       <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-200 shrink-0 shadow-sm">
                         <img src={courseForm.image} alt="Portada" className="w-full h-full object-cover" />
-                        <button 
-                          onClick={() => setCourseForm({...courseForm, image: ""})}
-                          className="absolute top-1 right-1 bg-white/90 backdrop-blur rounded-full p-1 shadow hover:text-rose-500 transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
+                        {isAdmin && (
+                          <button 
+                            onClick={() => setCourseForm({...courseForm, image: ""})}
+                            className="absolute top-1 right-1 bg-white/90 backdrop-blur rounded-full p-1 shadow hover:text-rose-500 transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <div className="w-20 h-20 rounded-xl bg-slate-50 border-2 border-dashed border-slate-200 flex items-center justify-center text-slate-400 shrink-0">
@@ -786,24 +838,26 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                       </div>
                     )}
                     
-                    <div className="flex-1">
-                      <label className={`w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-sm ${uploadingCover ? 'opacity-50 pointer-events-none' : ''}`}>
-                        {uploadingCover ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <UploadCloud className="w-4 h-4 text-emerald-500" />}
-                        {uploadingCover ? `Subiendo a Nube...` : "Subir Imagen (Galería/PC)"}
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              handleCoverUpload(e.target.files[0]);
-                              e.target.value = ''; 
-                            }
-                          }} 
-                        />
-                      </label>
-                      <p className="text-[9px] text-slate-400 mt-1.5 text-center leading-tight">Servicio Cloudinary (Almacenamiento Independiente).</p>
-                    </div>
+                    {isAdmin && (
+                      <div className="flex-1">
+                        <label className={`w-full flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer shadow-sm ${uploadingCover ? 'opacity-50 pointer-events-none' : ''}`}>
+                          {uploadingCover ? <Loader2 className="w-4 h-4 animate-spin text-emerald-500" /> : <UploadCloud className="w-4 h-4 text-emerald-500" />}
+                          {uploadingCover ? `Subiendo a Nube...` : "Subir Imagen"}
+                          <input 
+                            type="file" 
+                            accept="image/*" 
+                            className="hidden" 
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleCoverUpload(e.target.files[0]);
+                                e.target.value = ''; 
+                              }
+                            }} 
+                          />
+                        </label>
+                        <p className="text-[9px] text-slate-400 mt-1.5 text-center leading-tight">Servicio Cloudinary.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -868,7 +922,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-full pb-1.5" placeholder="Título Módulo" 
                           />
                           <div className="flex gap-2">
-                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded flex-1">
+                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded flex-1 hover:bg-slate-100 transition-colors">
                               + Agregar Tema
                             </button>
                           </div>
@@ -881,7 +935,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 const newMods = [...safeFormModules];
                                 newMods[mIndex].lessons.splice(lIndex, 1);
                                 setCourseForm({...courseForm, modules: newMods});
-                              }} className="absolute top-3 right-3 text-slate-400 hover:text-rose-500 bg-white rounded p-1 shadow-sm"><X className="w-3.5 h-3.5"/></button>
+                              }} className="absolute top-3 right-3 text-slate-400 hover:text-rose-500 bg-white rounded p-1 shadow-sm transition-colors"><X className="w-3.5 h-3.5"/></button>
                               
                               <input type="text" value={lesson.title} onChange={(e) => {
                                 const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].title = e.target.value; setCourseForm({...courseForm, modules: nm});
@@ -932,25 +986,90 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             )}
           </div>
 
+          {/* 🔒 BUSCADOR DE ALUMNOS MATRICULADOS - BLOQUEADO PARA DOCENTES 🔒 */}
           <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-full max-h-[600px]">
-              <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
-                <Users className="w-5 h-5 text-sky-500" />
-                <h2 className="font-bold text-slate-900 text-sm">Alumnos</h2>
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-full max-h-[650px]">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-sky-500" />
+                  <h2 className="font-bold text-slate-900 text-sm">Alumnos del Curso</h2>
+                </div>
+                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
+                  {Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents.length : 0} matriculados
+                </span>
               </div>
-              <div className="overflow-y-auto mt-4 space-y-2">
-                {safeStudents.map(student => {
-                  const isEnrolled = (Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents : []).includes(student.id);
-                  return (
-                    <div key={student.id} onClick={() => toggleStudentEnrollment(student.id)} className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer ${isEnrolled ? 'bg-sky-50 border-sky-200' : 'bg-white border-slate-100'}`}>
-                      <div className="flex items-center gap-2.5">
-                        <img src={student.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${student.name}`} alt="" className="w-7 h-7 rounded-full" />
-                        <div><p className="text-xs font-bold">{student.name}</p></div>
+              
+              {!isAdmin ? (
+                 <div className="mt-4 p-4 text-center bg-slate-50 border border-slate-100 rounded-xl">
+                   <Lock className="w-5 h-5 text-slate-300 mx-auto mb-2"/>
+                   <p className="text-xs text-slate-500 font-bold">Solo el administrador puede matricular o dar de baja a estudiantes.</p>
+                 </div>
+              ) : (
+                <div className="mt-4 relative shrink-0">
+                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 transition-all overflow-hidden">
+                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Buscar alumno para matricular..."
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      className="w-full bg-transparent p-3 text-xs outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-y-auto mt-4 space-y-2 flex-1 scrollbar-none pr-1">
+                {(() => {
+                  const enrolledIds = Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents : [];
+                  const searchLower = studentSearch.trim().toLowerCase();
+                  
+                  let filteredStudents = safeStudents;
+
+                  // Si el buscador está vacío, MUESTRA SOLO LOS MATRICULADOS
+                  if (searchLower === "") {
+                    filteredStudents = safeStudents.filter(s => enrolledIds.includes(s.id));
+                  } else if (isAdmin) {
+                    // Si hay texto, busca en todos los estudiantes (solo admin)
+                    filteredStudents = safeStudents.filter(s => 
+                      s.name.toLowerCase().includes(searchLower) || 
+                      (s.email && s.email.toLowerCase().includes(searchLower))
+                    );
+                  }
+
+                  if (filteredStudents.length === 0) {
+                    return (
+                      <div className="text-center py-8">
+                        <p className="text-xs text-slate-400">
+                          {searchLower === "" 
+                            ? (isAdmin ? "No hay alumnos matriculados. Usa el buscador para agregarlos." : "Aún no te han asignado alumnos.")
+                            : "No se encontraron resultados para tu búsqueda."}
+                        </p>
                       </div>
-                      {isEnrolled && <UserCheck className="w-4 h-4 text-sky-600" />}
-                    </div>
-                  );
-                })}
+                    );
+                  }
+
+                  return filteredStudents.map(student => {
+                    const isEnrolled = enrolledIds.includes(student.id);
+                    return (
+                      <div 
+                        key={student.id} 
+                        onClick={() => toggleStudentEnrollment(student.id)} 
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isAdmin ? 'cursor-pointer hover:border-sky-300 hover:bg-slate-50' : 'cursor-default'} ${isEnrolled ? 'bg-sky-50 border-sky-200 shadow-sm' : 'bg-white border-slate-100'}`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <img src={student.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${student.name}`} alt="" className="w-7 h-7 rounded-full bg-white shadow-sm" />
+                          <div><p className="text-xs font-bold text-slate-700">{student.name}</p></div>
+                        </div>
+                        {isEnrolled ? (
+                          <UserCheck className="w-4 h-4 text-sky-600" />
+                        ) : (
+                          isAdmin && <Plus className="w-4 h-4 text-slate-300" />
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </div>
           </div>
