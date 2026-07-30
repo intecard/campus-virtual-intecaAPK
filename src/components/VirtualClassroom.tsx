@@ -91,12 +91,22 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // NUEVO: Radar de Clases en Vivo
+  // NUEVO: Radar de Clases en Vivo con Escudo Anti-Duplicados
   useEffect(() => {
     const q = query(collection(db, "active_classes"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const classes: any[] = [];
-      snapshot.forEach(doc => classes.push({ id: doc.id, ...doc.data() }));
+      const seenHosts = new Set(); // <-- BLINDAJE: Memoria para no repetir profesores/admins
+
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // Si no hemos visto a este creador de sala todavía, lo agregamos.
+        // Como viene ordenado del más reciente al más viejo, siempre guardará la sala real y ocultará las "fantasmas".
+        if (!seenHosts.has(data.hostName)) {
+          seenHosts.add(data.hostName);
+          classes.push({ id: doc.id, ...data });
+        }
+      });
       setActiveLiveClasses(classes);
     });
     return () => unsubscribe();
@@ -171,8 +181,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const createNewRoom = async () => {
     const newCode = Math.random().toString(36).substring(2, 8);
     
-    // CORRECCIÓN: Guardamos la sala usando el nombre del profesor como ID.
-    // Así evitamos botones duplicados si le dan clic varias veces.
+    // Guardamos la sala usando el nombre del profesor como ID.
     if (currentUser.role === 'admin' || currentUser.role === 'teacher') {
       try {
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
@@ -206,7 +215,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           timestamp: serverTimestamp()
         }).catch((e) => console.error("Error cerrando sala:", e));
         
-        // CORRECCIÓN: Eliminamos la sala buscando por el nombre del profesor
+        // Eliminamos la sala buscando por el nombre del creador
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
         deleteDoc(doc(db, "active_classes", hostDocId)).catch(e => console.error("Error eliminando sala del radar:", e));
       }
@@ -496,7 +505,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
                 </div>
 
-                {/* NUEVO: RADAR DE CLASES ACTIVAS (FILTRADO) */}
+                {/* RADAR DE CLASES ACTIVAS (FILTRADO) */}
                 {visibleClasses.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-slate-100">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -525,7 +534,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       ))}
                     </div>
                     
-                    {/* SEPARADOR ELEGANTE */}
                     <div className="relative py-2 flex items-center">
                       <div className="flex-grow border-t border-slate-100"></div>
                       <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">O ingreso manual</span>
