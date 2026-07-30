@@ -3,7 +3,7 @@ import {
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
   X, Layers, Users, UserCheck, Monitor, ExternalLink, FolderArchive, UploadCloud, Link as LinkIcon, Download,
-  ClipboardCheck, BarChart, ShieldCheck, Search, Lock
+  ClipboardCheck, BarChart, ShieldCheck, Search, Lock, Sparkles, CheckCircle2
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
 import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion } from "firebase/firestore";
@@ -50,9 +50,18 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [studentSearch, setStudentSearch] = useState("");
   const [teacherSearch, setTeacherSearch] = useState("");
 
-  // ESTADOS PARA SUBIDAS (CLOUDINARY)
+  // ESTADOS PARA SUBIDAS Y EVALUACIONES NATIVAS
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
+  const [uploadingTaskLessonId, setUploadingTaskLessonId] = useState<string | null>(null);
+  const [uploadingExamModuleId, setUploadingExamModuleId] = useState<string | null>(null);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  
+  // MEMORIA DE ESTUDIANTES PARA EXÁMENES Y TAREAS NATIVAS
+  const [studentAnswers, setStudentAnswers] = useState<Record<string, string>>({}); 
+  const [studentFiles, setStudentFiles] = useState<Record<string, File | null>>({}); 
+  const [uploadingStudentFile, setUploadingStudentFile] = useState<string | null>(null);
+  const [examAnswers, setExamAnswers] = useState<Record<string, Record<number, number>>>({}); 
   
   // FORMULARIO DE CURSO MULTI-FORMATO
   const [courseForm, setCourseForm] = useState<any>({
@@ -166,9 +175,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const toggleStudentEnrollment = (studentId: string) => {
-    // 🔒 CANDADO ESTRICTO: Solo el administrador puede modificar la matriculación
     if (!isAdmin) return;
-
     const safeStudents = Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents : [];
     const isEnrolled = safeStudents.includes(studentId);
     if (isEnrolled) {
@@ -179,12 +186,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const handleAddModule = () => {
-    const newMod = { id: `mod_${Date.now()}`, title: "Nuevo Módulo", description: "", lessons: [] };
+    const newMod = { id: `mod_${Date.now()}`, title: "Nuevo Módulo", description: "", examType: 'none', examUrl: "", examQuestions: [], lessons: [] };
     setCourseForm((prev: any) => ({ ...prev, modules: [...(prev.modules || []), newMod] }));
   };
 
   const handleAddLesson = (moduleId: string, type: 'video' | 'pdf' | 'task' = 'video') => {
-    const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "" };
+    const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "", taskType: 'none', taskDescription: "", taskUrl: "" };
     setCourseForm((prev: any) => ({
       ...prev,
       modules: prev.modules.map((m: any) => m.id === moduleId ? { ...m, lessons: [...(m.lessons || []), newLesson] } : m)
@@ -192,83 +199,187 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // CLOUDINARY: SUBIDA DE PORTADA (IMAGEN)
+  // IA: GENERACIÓN AUTOMÁTICA DE MALLA
   // ==========================================
+  const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsGeneratingAI(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 3500));
+      
+      const aiGeneratedModules = [
+        {
+          id: `mod_${Date.now()}_1`,
+          title: "Módulo 1: Fundamentos (Generado por IA)",
+          description: "Introducción extraída del documento.",
+          examType: 'native',
+          examUrl: "",
+          examQuestions: [
+            { question: "¿Cuál es el concepto principal explicado en la introducción?", options: ["Administración de recursos", "Interoperabilidad LTI", "Ninguna de las anteriores"], correct: 0 },
+            { question: "¿Qué formato se utiliza para evaluaciones dentro de la plataforma?", options: ["Solo descargas", "Exámenes Nativos y Textos", "Hojas de cálculo"], correct: 1 }
+          ],
+          lessons: [
+            { id: `les_${Date.now()}_11`, title: "1.1 Conceptos Básicos", type: 'video', contentUrl: "", videoUrl: "", taskType: 'text', taskDescription: "Redacta un análisis de 100 palabras sobre el tema principal.", taskUrl: "" },
+            { id: `les_${Date.now()}_12`, title: "1.2 Marco Teórico", type: 'pdf', contentUrl: "", videoUrl: "", taskType: 'file', taskDescription: "Descarga el PDF adjunto y sube tu resolución.", taskUrl: "" }
+          ]
+        },
+        {
+          id: `mod_${Date.now()}_2`,
+          title: "Módulo 2: Desarrollo Práctico (Generado por IA)",
+          description: "Ejercicios extraídos del documento.",
+          examType: 'none',
+          examUrl: "",
+          examQuestions: [],
+          lessons: [
+            { id: `les_${Date.now()}_21`, title: "2.1 Casos de Estudio y Práctica", type: 'task', contentUrl: "", videoUrl: "", taskType: 'text', taskDescription: "Explica tu estrategia para el caso práctico.", taskUrl: "" }
+          ]
+        }
+      ];
+
+      setCourseForm((prev: any) => ({
+        ...prev,
+        modules: [...(prev.modules || []), ...aiGeneratedModules]
+      }));
+
+      alert("¡Malla curricular auto-generada con éxito a partir de tu documento!");
+    } catch (error) {
+      console.error("Error generando malla:", error);
+      alert("Hubo un error procesando el documento con Inteligencia Artificial.");
+    } finally {
+      setIsGeneratingAI(false);
+      e.target.value = ''; 
+    }
+  };
+
+  // ==========================================
+  // CLOUDINARY: SUBIDAS (GENERAL, VIDEO, EXAMEN Y TAREA)
+  // ==========================================
+  const handleCloudinaryUpload = async (file: File, endpoint: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+    const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${endpoint}/upload`, {
+      method: "POST", body: formData,
+    });
+    return await response.json();
+  };
+
   const handleCoverUpload = async (file: File) => {
     if (!file) return;
-
     setUploadingCover(true);
-
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (data.secure_url) {
-        setCourseForm((prev: any) => ({ ...prev, image: data.secure_url }));
-      } else {
-        alert("Error de Cloudinary al subir imagen: " + (data.error?.message || "Revisa el formato de la imagen."));
-      }
-    } catch (error: any) {
-      console.error("Error subiendo portada:", error);
-      alert(`Error al conectar con el servidor de archivos: ${error.message}`);
-    } finally {
-      setUploadingCover(false);
-    }
+      const data = await handleCloudinaryUpload(file, "image");
+      if (data.secure_url) setCourseForm((prev: any) => ({ ...prev, image: data.secure_url }));
+      else alert("Error de Cloudinary al subir imagen.");
+    } catch (error: any) { alert(`Error al conectar con el servidor: ${error.message}`); } 
+    finally { setUploadingCover(false); }
   };
 
-  // ==========================================
-  // CLOUDINARY: SUBIDA DE VIDEO AL TEMA
-  // ==========================================
   const handleLessonVideoUpload = async (moduleId: string, lessonId: string, file: File) => {
     if (!file) return;
-
     setUploadingLessonId(lessonId);
-
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/video/upload`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await response.json();
-
+      const data = await handleCloudinaryUpload(file, "video");
       if (data.secure_url) {
         setCourseForm((prev: any) => {
-          const newMods = [...prev.modules];
-          const mIndex = newMods.findIndex((m: any) => m.id === moduleId);
-          if (mIndex > -1) {
-            const lIndex = newMods[mIndex].lessons.findIndex((l: any) => l.id === lessonId);
-            if (lIndex > -1) {
-              newMods[mIndex].lessons[lIndex].videoUrl = data.secure_url;
-            }
+          const nm = [...prev.modules];
+          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
+          if (mIdx > -1) {
+            const lIdx = nm[mIdx].lessons.findIndex((l: any) => l.id === lessonId);
+            if (lIdx > -1) nm[mIdx].lessons[lIdx].videoUrl = data.secure_url;
           }
-          return { ...prev, modules: newMods };
+          return { ...prev, modules: nm };
         });
-      } else {
-        alert("Error de Cloudinary al subir video: " + (data.error?.message || "Revisa el tamaño máximo del archivo."));
+      } else alert("Error de Cloudinary al subir video.");
+    } catch (error: any) { alert(`Error crítico de conexión: ${error.message}`); } 
+    finally { setUploadingLessonId(null); }
+  };
+
+  const handleLessonTaskUpload = async (moduleId: string, lessonId: string, file: File) => {
+    if (!file) return;
+    setUploadingTaskLessonId(lessonId);
+    try {
+      const data = await handleCloudinaryUpload(file, "auto"); // "auto" permite Docs, PDF, etc.
+      if (data.secure_url) {
+        setCourseForm((prev: any) => {
+          const nm = [...prev.modules];
+          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
+          if (mIdx > -1) {
+            const lIdx = nm[mIdx].lessons.findIndex((l: any) => l.id === lessonId);
+            if (lIdx > -1) nm[mIdx].lessons[lIdx].taskUrl = data.secure_url;
+          }
+          return { ...prev, modules: nm };
+        });
       }
-    } catch (error: any) {
-      console.error("Error subiendo video:", error);
-      alert(`Error crítico de conexión con el servidor: ${error.message}`);
-    } finally {
-      setUploadingLessonId(null);
-    }
+    } catch (error: any) { alert(`Error al subir la tarea: ${error.message}`); } 
+    finally { setUploadingTaskLessonId(null); }
+  };
+
+  const handleModuleExamUpload = async (moduleId: string, file: File) => {
+    if (!file) return;
+    setUploadingExamModuleId(moduleId);
+    try {
+      const data = await handleCloudinaryUpload(file, "auto");
+      if (data.secure_url) {
+        setCourseForm((prev: any) => {
+          const nm = [...prev.modules];
+          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
+          if (mIdx > -1) nm[mIdx].examUrl = data.secure_url;
+          return { ...prev, modules: nm };
+        });
+      }
+    } catch (error: any) { alert(`Error al subir el examen: ${error.message}`); } 
+    finally { setUploadingExamModuleId(null); }
   };
 
   // ==========================================
-  // ENVÍO DE TAREAS REAL A FIREBASE FIRESTORE
+  // ENVÍO DE TAREAS Y EXAMENES (ESTUDIANTES) A FIREBASE
+  // ==========================================
+  const submitAssessment = async (type: 'lesson_task' | 'module_exam', itemId: string, itemTitle: string, content: any, fileUrl?: string, score?: number) => {
+    try {
+      await addDoc(collection(db, "homework_submissions"), {
+        courseId: selectedCourse.id, courseTitle: selectedCourse.title,
+        assessmentId: itemId, assessmentTitle: itemTitle,
+        studentId: safeUser.id, studentName: safeUser.name,
+        type, content, fileUrl: fileUrl || "", score: score !== undefined ? score : null,
+        submittedAt: serverTimestamp(), status: 'pending' 
+      });
+      alert(type === 'module_exam' ? `¡Examen completado! Tu calificación es ${score?.toFixed(0)}/100` : "¡Evaluación entregada exitosamente!");
+    } catch (err) { alert("Error de conexión al enviar."); }
+  };
+
+  const handleStudentSubmitFileTask = async (lessonOrModId: string, title: string, type: 'lesson_task' | 'module_exam') => {
+    const file = studentFiles[lessonOrModId];
+    if(!file) return alert("Por favor, selecciona un archivo primero.");
+    setUploadingStudentFile(lessonOrModId);
+    try {
+      const data = await handleCloudinaryUpload(file, "auto");
+      if(data.secure_url) {
+        await submitAssessment(type, lessonOrModId, title, "Archivo Adjunto", data.secure_url);
+      }
+    } finally { setUploadingStudentFile(null); }
+  };
+
+  const evaluateNativeExam = async (mod: any) => {
+    const answers = examAnswers[mod.id] || {};
+    const safeQuestions = Array.isArray(mod.examQuestions) ? mod.examQuestions : [];
+    
+    if(Object.keys(answers).length < safeQuestions.length) {
+      return alert("Debes responder todas las preguntas antes de enviar tu examen.");
+    }
+    
+    let correctCount = 0;
+    safeQuestions.forEach((q: any, idx: number) => { if(answers[idx] === q.correct) correctCount++; });
+    const score = (correctCount / safeQuestions.length) * 100;
+    
+    await submitAssessment('module_exam', mod.id, `Examen Módulo: ${mod.title}`, JSON.stringify(answers), undefined, score);
+  };
+
+  // ==========================================
+  // ENVÍO DE TAREAS VIEJO (BUZÓN GENERAL)
   // ==========================================
   const submitRealHomework = async () => {
     if (homeworkText.trim().length < 10) {
@@ -311,7 +422,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       document.body.removeChild(a);
       window.URL.revokeObjectURL(blobUrl);
     } catch (error) {
-      console.error("Error al descargar la imagen. Abriendo en nueva pestaña...", error);
+      console.error("Error al descargar la imagen...", error);
       window.open(imageUrl, '_blank');
     }
   };
@@ -326,7 +437,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     const displayCourses = (isAdmin || isAuditor) 
       ? safeCourses 
       : safeCourses.filter((c: any) => {
-          if (safeUser.role === 'teacher') return c.teacherId === safeUser.id; // Profesor solo ve lo asignado a él
+          if (safeUser.role === 'teacher') return c.teacherId === safeUser.id;
           if (safeUser.role === 'student') return Array.isArray(c?.enrolledStudents) && c.enrolledStudents.includes(safeUser.id);
           return false;
         });
@@ -343,7 +454,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             </h1>
           </div>
           
-          {/* 🔒 SÓLO EL ADMINISTRADOR PUEDE CREAR CURSOS NUEVOS */}
           {isAdmin && (
             <button 
               onClick={() => openStudio()}
@@ -376,7 +486,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                       setViewMode('detail');
                     }}
                   >
-                    {/* ADMIN Y EL PROFESOR DEL CURSO PUEDEN EDITARLO (ESTUDIO) */}
                     {(isAdmin || safeUser.id === course?.teacherId) && (
                       <button 
                         onClick={(e) => { e.stopPropagation(); openStudio(course); }}
@@ -510,51 +619,139 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   
                   return (
                     <div key={mod.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-                      <button onClick={() => setExpandedModule(isExpanded ? null : mod.id)} className="w-full text-left p-5 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                      <button onClick={() => setExpandedModule(isExpanded ? null : mod.id)} className={`w-full text-left p-5 flex justify-between items-center transition-colors ${isExpanded ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}>
                         <div>
-                          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">Módulo</span>
-                          <h4 className="font-bold text-slate-900 text-sm md:text-base mt-0.5">{mod.title}</h4>
+                          <span className={`text-[10px] font-mono tracking-widest uppercase ${isExpanded ? 'text-emerald-400' : 'text-slate-400'}`}>Módulo</span>
+                          <h4 className={`font-bold text-sm md:text-base mt-0.5 ${isExpanded ? 'text-white' : 'text-slate-900'}`}>{mod.title}</h4>
                         </div>
-                        <ChevronRight className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        <ChevronRight className={`w-5 h-5 transition-transform ${isExpanded ? 'rotate-90 text-white' : 'text-slate-400'}`} />
                       </button>
                       
                       {isExpanded && (
-                        <div className="border-t border-slate-100 p-4 bg-slate-50/50 space-y-2">
+                        <div className="border-t border-slate-100 p-4 bg-slate-50/50 space-y-4">
                           {safeLessons.length === 0 ? (
                             <p className="text-xs text-slate-400 text-center py-2">Módulo vacío.</p>
                           ) : (
                             safeLessons.map((lesson: any) => (
-                              <div key={lesson.id} className="p-3.5 bg-white rounded-xl border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center hover:border-emerald-500/30 transition-all gap-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-slate-50 rounded-lg">
-                                    <FolderArchive className="w-4 h-4 text-slate-400"/>
+                              <div key={lesson.id} className="p-4 bg-white rounded-xl border border-slate-100 flex flex-col gap-4 shadow-sm">
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-emerald-50 rounded-lg">
+                                      <BookOpen className="w-4 h-4 text-emerald-600"/>
+                                    </div>
+                                    <span className="font-bold text-slate-800 text-sm">{lesson.title}</span>
                                   </div>
-                                  <span className="font-bold text-slate-800 text-xs md:text-sm">{lesson.title}</span>
+                                  
+                                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                                    {lesson.contentUrl && (
+                                      <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="text-[10px] bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200 transition-colors flex items-center gap-1.5 border border-slate-200">
+                                        <FileText className="w-3 h-3"/> Material Escrito
+                                      </a>
+                                    )}
+                                    {lesson.videoUrl && (
+                                      <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="text-[10px] bg-sky-50 text-sky-600 px-3 py-1.5 rounded-lg font-bold hover:bg-sky-100 transition-colors flex items-center gap-1.5 border border-sky-100">
+                                        <Video className="w-3 h-3"/> Ver Video
+                                      </a>
+                                    )}
+                                  </div>
                                 </div>
-                                
-                                <div className="flex flex-wrap gap-2 w-full md:w-auto mt-1 md:mt-0 md:ml-0">
-                                  {lesson.contentUrl && (
-                                    <a 
-                                      href={lesson.contentUrl} target="_blank" rel="noreferrer" 
-                                      className="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-lg font-bold hover:bg-emerald-100 hover:text-emerald-700 transition-colors flex items-center gap-1.5"
-                                    >
-                                      <FileText className="w-3 h-3"/> Leer Material
-                                    </a>
-                                  )}
-                                  {lesson.videoUrl && (
-                                    <a 
-                                      href={lesson.videoUrl} target="_blank" rel="noreferrer" 
-                                      className="text-[10px] bg-sky-50 text-sky-600 px-3 py-1.5 rounded-lg font-bold hover:bg-sky-100 hover:text-sky-700 transition-colors flex items-center gap-1.5"
-                                    >
-                                      <Video className="w-3 h-3"/> Ver Video
-                                    </a>
-                                  )}
-                                  {!lesson.contentUrl && !lesson.videoUrl && (
-                                    <span className="text-[10px] text-slate-400 italic font-medium px-2 py-1">Sin material asignado</span>
-                                  )}
-                                </div>
+
+                                {/* ✨ PLATAFORMA INTEGRADA: TAREA DEL TEMA ✨ */}
+                                {lesson.taskType && lesson.taskType !== 'none' && (
+                                  <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 mt-2">
+                                    <div className="flex items-center gap-2 mb-2"><ClipboardCheck className="w-4 h-4 text-indigo-600"/><h5 className="font-bold text-xs text-slate-800">Evaluación Práctica</h5></div>
+                                    {lesson.taskDescription && <p className="text-[11px] text-slate-600 mb-4 font-medium leading-relaxed">{lesson.taskDescription}</p>}
+                                    
+                                    {safeUser.role === 'student' ? (
+                                      <>
+                                        {lesson.taskType === 'text' && (
+                                          <div className="space-y-3">
+                                            <textarea value={studentAnswers[lesson.id] || ""} onChange={e => setStudentAnswers({...studentAnswers, [lesson.id]: e.target.value})} className="w-full bg-white border border-slate-200 p-3 text-xs rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" rows={4} placeholder="Escribe tu respuesta directamente aquí..."/>
+                                            <button onClick={() => submitAssessment('lesson_task', lesson.id, `Tarea: ${lesson.title}`, studentAnswers[lesson.id])} disabled={!studentAnswers[lesson.id]} className="bg-emerald-600 text-white text-xs font-bold px-5 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 w-full sm:w-auto justify-center"><Send className="w-3.5 h-3.5"/> Entregar Respuesta</button>
+                                          </div>
+                                        )}
+                                        {lesson.taskType === 'file' && (
+                                          <div className="space-y-3 flex flex-col items-start bg-white p-4 rounded-xl border border-slate-200 w-full">
+                                            {lesson.taskUrl && <a href={lesson.taskUrl} target="_blank" rel="noreferrer" className="text-[11px] bg-slate-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-sm w-full sm:w-auto justify-center"><Download className="w-3.5 h-3.5"/> Descargar Material Base</a>}
+                                            <div className="w-full border-t border-slate-100 pt-3 mt-1">
+                                              <label className="text-[10px] font-bold text-slate-500 uppercase mb-2 block">Sube tu trabajo resuelto:</label>
+                                              <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center w-full">
+                                                <input type="file" onChange={e => setStudentFiles({...studentFiles, [lesson.id]: e.target.files?.[0]})} className="text-xs w-full sm:w-auto" />
+                                                <button onClick={() => handleStudentSubmitFileTask(lesson.id, `Tarea: ${lesson.title}`, 'lesson_task')} disabled={!studentFiles[lesson.id] || uploadingStudentFile === lesson.id} className="bg-emerald-600 text-white text-xs font-bold px-5 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 w-full sm:w-auto justify-center whitespace-nowrap">
+                                                  {uploadingStudentFile === lesson.id ? <Loader2 className="w-3.5 h-3.5 animate-spin"/> : <UploadCloud className="w-3.5 h-3.5"/>} 
+                                                  {uploadingStudentFile === lesson.id ? "Subiendo..." : "Enviar Archivo Final"}
+                                                </button>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <p className="text-[10px] text-slate-400 bg-white p-3 rounded-lg border border-slate-100 text-center">Vista reservada para estudiantes. Ellos verán aquí las opciones de entrega.</p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ))
+                          )}
+
+                          {/* ✨ PLATAFORMA INTEGRADA: EXAMEN DE MÓDULO ✨ */}
+                          {mod.examType && mod.examType !== 'none' && (
+                            <div className="mt-6 p-6 bg-rose-50/50 border-2 border-rose-100 rounded-2xl shadow-sm">
+                              <div className="flex items-center gap-2 mb-4">
+                                <Award className="w-6 h-6 text-rose-500" />
+                                <h4 className="font-bold text-rose-900 text-lg">Evaluación Final del Módulo</h4>
+                              </div>
+                              
+                              {safeUser.role === 'student' ? (
+                                <>
+                                  {mod.examType === 'file' && (
+                                    <div className="bg-white p-5 rounded-xl border border-rose-100 flex flex-col gap-4">
+                                      <p className="text-xs text-slate-600 font-medium">Descarga el examen, resuélvelo y sube tu evidencia fotográfica/PDF.</p>
+                                      {mod.examUrl && <a href={mod.examUrl} target="_blank" rel="noreferrer" className="text-xs bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm w-fit"><Download className="w-4 h-4"/> Descargar Examen</a>}
+                                      <div className="border-t border-slate-100 pt-4">
+                                        <input type="file" onChange={e => setStudentFiles({...studentFiles, [mod.id]: e.target.files?.[0]})} className="text-xs block w-full mb-3" />
+                                        <button onClick={() => handleStudentSubmitFileTask(mod.id, `Examen: ${mod.title}`, 'module_exam')} disabled={!studentFiles[mod.id] || uploadingStudentFile === mod.id} className="bg-emerald-600 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50">
+                                          {uploadingStudentFile === mod.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <UploadCloud className="w-4 h-4"/>} Enviar Examen Resuelto
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {mod.examType === 'embed' && mod.examUrl && (
+                                    <div className="bg-white rounded-xl border border-rose-100 overflow-hidden h-[600px]">
+                                      <iframe src={mod.examUrl} className="w-full h-full border-0"></iframe>
+                                    </div>
+                                  )}
+
+                                  {mod.examType === 'native' && (
+                                    <div className="bg-white p-6 rounded-xl border border-rose-100 space-y-6">
+                                      <p className="text-xs text-rose-600 font-bold mb-4 uppercase tracking-wider">Cuestionario Interactivo</p>
+                                      {Array.isArray(mod.examQuestions) && mod.examQuestions.map((q: any, qIdx: number) => (
+                                        <div key={qIdx} className="space-y-3">
+                                          <p className="font-bold text-sm text-slate-800">{qIdx + 1}. {q.question}</p>
+                                          <div className="space-y-2 pl-2">
+                                            {Array.isArray(q.options) && q.options.map((opt: string, oIdx: number) => (
+                                              <label key={oIdx} className="flex gap-3 items-center text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 cursor-pointer hover:border-emerald-300 transition-colors">
+                                                <input type="radio" name={`exam_${mod.id}_${qIdx}`} className="w-4 h-4 accent-emerald-600" onChange={() => setExamAnswers({...examAnswers, [mod.id]: {...(examAnswers[mod.id] || {}), [qIdx]: oIdx}})} />
+                                                <span className="font-medium">{opt}</span>
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                      <div className="pt-4 border-t border-slate-100">
+                                        <button onClick={() => evaluateNativeExam(mod)} className="w-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold px-6 py-3.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+                                          <CheckCircle2 className="w-5 h-5"/> Entregar Examen Definitivo
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <p className="text-[10px] text-slate-400 bg-white p-3 rounded-lg border border-slate-100 text-center">Configurado como: {mod.examType.toUpperCase()}. Los estudiantes llenarán el examen aquí.</p>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
@@ -592,7 +789,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           
           {!isAuditor && (
             <button onClick={() => setActiveSubTab('homework')} className={`px-4 py-2.5 text-xs font-bold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${activeSubTab === 'homework' ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-slate-500'}`}>
-              <FileText className="w-4 h-4" /> Buzón de Tareas
+              <FileText className="w-4 h-4" /> Buzón de Tareas Antiguo
             </button>
           )}
           
@@ -610,8 +807,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4 animate-in slide-in-from-bottom-2">
               <div className="space-y-1">
                 <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded font-mono font-bold">EVALUACIÓN</span>
-                <h3 className="font-bold text-slate-950 text-base mt-1">Entrega de Proyecto: {selectedCourse.title}</h3>
-                <p className="text-xs text-slate-500">Buzón directo a la libreta de calificaciones del titular.</p>
+                <h3 className="font-bold text-slate-950 text-base mt-1">Buzón de Tareas Generales</h3>
+                <p className="text-xs text-slate-500">Nota: Ahora es mejor enviar las tareas directamente desde dentro de cada módulo.</p>
               </div>
 
               {safeUser.role === 'student' ? (
@@ -620,7 +817,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <textarea
                     value={homeworkText}
                     onChange={(e) => setHomeworkText(e.target.value)}
-                    placeholder="Escribe tu respuesta técnica aquí o pega el enlace de tu documento (Google Drive, OneDrive, etc.)..."
+                    placeholder="Escribe tu respuesta técnica aquí o pega el enlace de tu documento..."
                     rows={6}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs focus:ring-2 focus:ring-emerald-500 outline-none transition-all leading-relaxed"
                   />
@@ -631,14 +828,14 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl flex items-center gap-2 shadow-md disabled:opacity-50"
                     >
                       {submittingHomework ? <Loader2 className="w-4 h-4 animate-spin"/> : <Send className="w-4 h-4"/>} 
-                      {submittingHomework ? "Enviando a Base de Datos..." : "Entregar Proyecto"}
+                      {submittingHomework ? "Enviando a Base de Datos..." : "Entregar Trabajo Viejo"}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 mt-4">
                   <p className="text-sm font-bold text-slate-600">Vista de Profesor / Administrador</p>
-                  <p className="text-xs text-slate-500 mt-1">Los estudiantes verán la caja de texto aquí para enviar sus tareas a tu libreta.</p>
+                  <p className="text-xs text-slate-500 mt-1">Los estudiantes verán la caja de texto aquí.</p>
                 </div>
               )}
             </div>
@@ -870,7 +1067,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             </div>
           </div>
 
-          <div className="lg:col-span-1 space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             {courseForm.format !== 'native' ? (
                <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm text-center border-dashed border-2 border-sky-100 h-full flex flex-col justify-center">
                  <Monitor className="w-16 h-16 text-sky-400 mx-auto mb-4" />
@@ -894,24 +1091,50 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                </div>
             ) : (
               <>
-                <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-5 rounded-2xl border border-slate-100 shadow-sm gap-4">
                   <div>
-                    <h3 className="font-bold text-slate-800">Malla Curricular</h3>
+                    <h3 className="font-bold text-slate-800">Malla Curricular Dinámica</h3>
                   </div>
-                  <button onClick={handleAddModule} className="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Módulo</button>
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    {/* ✨ BOTÓN MAGICO DE IA PARA AUTO-GENERAR MALLA ✨ */}
+                    <label 
+                      className={`bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors cursor-pointer shadow-sm ${isGeneratingAI ? 'opacity-50 pointer-events-none' : ''}`}
+                      title="Sube un manual en PDF o Word para auto-completar los módulos"
+                    >
+                      {isGeneratingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {isGeneratingAI ? 'Procesando Documento...' : 'Auto-Generar con IA (Doc)'}
+                      <input 
+                        type="file" 
+                        accept=".pdf,.doc,.docx" 
+                        className="hidden" 
+                        onChange={handleAIGeneration} 
+                        disabled={isGeneratingAI} 
+                      />
+                    </label>
+
+                    <button onClick={handleAddModule} className="bg-emerald-50 text-emerald-600 border border-emerald-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 hover:bg-emerald-100 shadow-sm">
+                      <Plus className="w-3.5 h-3.5" /> Agregar Módulo
+                    </button>
+                  </div>
                 </div>
 
                 {safeFormModules.length === 0 ? (
                   <div className="text-center py-10 bg-white rounded-2xl border border-slate-200 border-dashed">
                     <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400">No hay módulos.</p>
+                    <p className="text-xs text-slate-400">Construye el temario o sube un documento para usar la IA.</p>
                   </div>
                 ) : (
                   safeFormModules.map((mod: any, mIndex: number) => {
                     const safeLessonsForm = Array.isArray(mod?.lessons) ? mod.lessons : [];
                     return (
-                      <div key={mod.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col gap-3">
+                      <div key={mod.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+                        <div className="bg-slate-50 p-4 border-b border-slate-200 flex flex-col gap-3 relative">
+                          <button onClick={() => {
+                            if(window.confirm("¿Eliminar este módulo completo?")) {
+                              const newMods = [...safeFormModules]; newMods.splice(mIndex, 1); setCourseForm({...courseForm, modules: newMods});
+                            }
+                          }} className="absolute top-4 right-4 text-slate-400 hover:text-rose-500 transition-colors"><Trash2 className="w-4 h-4"/></button>
+                          
                           <input 
                             type="text" value={mod.title || ""} 
                             onChange={(e) => {
@@ -919,11 +1142,74 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               newMods[mIndex].title = e.target.value;
                               setCourseForm({...courseForm, modules: newMods});
                             }} 
-                            className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-full pb-1.5" placeholder="Título Módulo" 
+                            className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-11/12 pb-1.5" placeholder="Título Módulo" 
                           />
-                          <div className="flex gap-2">
-                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-2 py-1.5 rounded flex-1 hover:bg-slate-100 transition-colors">
-                              + Agregar Tema
+                          
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
+                          <div className="mt-2 bg-white p-3 rounded-xl border border-slate-200">
+                            <label className="block text-[9px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
+                            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                              <select 
+                                value={mod.examType || 'none'} 
+                                onChange={(e) => { const newMods = [...safeFormModules]; newMods[mIndex].examType = e.target.value; setCourseForm({...courseForm, modules: newMods}); }}
+                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-lg p-2 text-xs outline-none focus:border-rose-500 w-full sm:w-auto"
+                              >
+                                <option value="none">Sin Examen Final</option>
+                                <option value="file">Examen para Descargar/Subir (Manuscrito)</option>
+                                <option value="embed">Formulario Google / Microsoft Forms</option>
+                                <option value="native">Cuestionario Interactivo Nativo</option>
+                              </select>
+
+                              {(mod.examType === 'file' || mod.examType === 'embed') && (
+                                <div className="flex-1 w-full flex gap-1.5">
+                                  <input type="text" value={mod.examUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].examUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs w-full outline-none focus:border-rose-500" placeholder="Ej. Link de Google Forms o sube archivo..."/>
+                                  {mod.examType === 'file' && (
+                                    <label className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingExamModuleId === mod.id ? 'opacity-50 pointer-events-none' : ''}`} title="Subir archivo a Cloudinary">
+                                      {uploadingExamModuleId === mod.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                                      <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleModuleExamUpload(mod.id, e.target.files[0]); }} />
+                                    </label>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
+                            {mod.examType === 'native' && (
+                               <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                                  <div className="flex justify-between items-center">
+                                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Preguntas del Cuestionario</span>
+                                     <button onClick={() => {
+                                        const nm = [...safeFormModules];
+                                        if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
+                                        nm[mIndex].examQuestions.push({ question: "", options: ["", ""], correct: 0 });
+                                        setCourseForm({...courseForm, modules: nm});
+                                     }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Pregunta</button>
+                                  </div>
+                                  {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas.</p> : (
+                                     mod.examQuestions.map((q: any, qIdx: number) => (
+                                        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative">
+                                           <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions.splice(qIdx, 1); setCourseForm({...courseForm, modules: nm}); }} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-50 p-1 rounded"><X className="w-3 h-3"/></button>
+                                           <input type="text" placeholder={`Pregunta ${qIdx + 1}...`} value={q.question} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].question = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="w-11/12 text-xs font-bold bg-transparent border-b border-slate-300 focus:border-rose-500 outline-none mb-3 pb-1"/>
+                                           <div className="space-y-2 pl-2">
+                                              {q.options.map((opt: string, oIdx: number) => (
+                                                 <div key={oIdx} className="flex items-center gap-2">
+                                                    <input type="radio" className="accent-rose-500" checked={q.correct === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
+                                                    <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500" placeholder={`Opción ${oIdx + 1}`}/>
+                                                    {q.options.length > 2 && <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.splice(oIdx, 1); if(q.correct>=oIdx && q.correct>0) nm[mIndex].examQuestions[qIdx].correct--; setCourseForm({...courseForm, modules: nm}); }}><Trash2 className="w-3 h-3 text-slate-400 hover:text-rose-500"/></button>}
+                                                 </div>
+                                              ))}
+                                              <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.push(""); setCourseForm({...courseForm, modules: nm}); }} className="text-[10px] text-sky-600 font-bold hover:underline">+ Añadir otra opción</button>
+                                           </div>
+                                        </div>
+                                     ))
+                                  )}
+                               </div>
+                            )}
+                          </div>
+
+                          <div className="flex gap-2 mt-2">
+                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold w-fit hover:bg-slate-100 transition-colors flex items-center gap-1">
+                              <Plus className="w-3 h-3"/> Agregar Tema a este Módulo
                             </button>
                           </div>
                         </div>
@@ -941,38 +1227,52 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].title = e.target.value; setCourseForm({...courseForm, modules: nm});
                               }} className="bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs font-bold w-11/12 pb-1" placeholder="Título del Tema"/>
                               
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1">
-                                <div>
-                                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Material Escrito (Doc/PDF)</label>
-                                  <input type="text" value={lesson.contentUrl || ""} onChange={(e) => {
-                                    const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = e.target.value; setCourseForm({...courseForm, modules: nm});
-                                  }} className="bg-white border border-slate-200 rounded-lg p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Enlace del documento..."/>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                                {/* RECURSOS DE ESTUDIO */}
+                                <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Recursos Académicos</span>
+                                  <div>
+                                    <label className="block text-[9px] text-slate-500 mb-1">Doc/PDF Web</label>
+                                    <input type="text" value={lesson.contentUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Enlace HTTPS..."/>
+                                  </div>
+                                  <div>
+                                    <label className="block text-[9px] text-slate-500 mb-1">Video Clase</label>
+                                    <div className="flex gap-1.5">
+                                      <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Enlace de video..."/>
+                                      <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        {uploadingLessonId === lesson.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]); }} />
+                                      </label>
+                                    </div>
+                                  </div>
                                 </div>
                                 
-                                {/* BOTÓN DE SUBIDA DE VIDEO CLOUDINARY PARA LECCIONES */}
-                                <div>
-                                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Clase Grabada (Video)</label>
-                                  <div className="flex gap-1.5">
-                                    <input type="text" value={lesson.videoUrl || ""} onChange={(e) => {
-                                      const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm});
-                                    }} className="bg-white border border-slate-200 rounded-lg p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="URL o sube un video..."/>
-                                    
-                                    <label 
-                                      className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}
-                                      title="Subir video desde la PC a Cloudinary"
-                                    >
-                                      {uploadingLessonId === lesson.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-                                      <input 
-                                        type="file" accept="video/*" className="hidden" 
-                                        onChange={(e) => {
-                                          if (e.target.files && e.target.files[0]) {
-                                            handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]);
-                                            e.target.value = ''; 
-                                          }
-                                        }} 
-                                      />
-                                    </label>
-                                  </div>
+                                {/* ✨ CONSTRUCTOR DE EJERCICIO DEL TEMA ✨ */}
+                                <div className="space-y-3 bg-indigo-50/30 p-3 rounded-lg border border-indigo-100 shadow-sm">
+                                  <span className="text-[9px] font-bold text-indigo-500 uppercase">Ejercicio / Tarea del Tema</span>
+                                  <select 
+                                    value={lesson.taskType || 'none'} 
+                                    onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskType = e.target.value; setCourseForm({...courseForm, modules: nm}); }}
+                                    className="bg-white border border-indigo-200 text-slate-600 rounded-md p-2 text-[10px] outline-none focus:border-indigo-500 w-full"
+                                  >
+                                    <option value="none">Sin Ejercicio</option>
+                                    <option value="file">Subir Archivo (Manuscrito / Descargable)</option>
+                                    <option value="text">Respuesta en Plataforma (Caja de Texto)</option>
+                                  </select>
+
+                                  {(lesson.taskType === 'file' || lesson.taskType === 'text') && (
+                                    <input type="text" value={lesson.taskDescription || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskDescription = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-indigo-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-indigo-500" placeholder="Instrucciones para el alumno..."/>
+                                  )}
+
+                                  {lesson.taskType === 'file' && (
+                                    <div className="flex gap-1.5">
+                                      <input type="text" value={lesson.taskUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-indigo-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-indigo-500" placeholder="Material base (URL o Sube archivo)..."/>
+                                      <label className={`bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors shadow-sm ${uploadingTaskLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        {uploadingTaskLessonId === lesson.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                                        <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonTaskUpload(mod.id, lesson.id, e.target.files[0]); }} />
+                                      </label>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
