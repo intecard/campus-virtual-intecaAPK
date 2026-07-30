@@ -16,6 +16,10 @@ export interface UserProfile {
   attendanceRate?: number;
   averageGrade?: number;
   riskScore?: number; // <-- AÑADIDO PARA LA CONSOLA ANALÍTICA
+  
+  // NUEVO: Lista de profesores que le dan clase a este estudiante
+  assignedTeachers?: string[]; 
+  
   aiProfile?: {
     performance: string;
     behavior: string;

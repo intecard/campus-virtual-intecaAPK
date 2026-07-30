@@ -28,7 +28,7 @@ import {
   serverTimestamp,
   deleteDoc,
   doc,
-  setDoc // <-- NUEVO: Importado para publicar salas activas
+  setDoc 
 } from "firebase/firestore";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -171,12 +171,14 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const createNewRoom = async () => {
     const newCode = Math.random().toString(36).substring(2, 8);
     
-    // NUEVO: Publicar la sala en el Radar de Estudiantes
+    // CORRECCIÓN: Guardamos la sala usando el nombre del profesor como ID.
+    // Así evitamos botones duplicados si le dan clic varias veces.
     if (currentUser.role === 'admin' || currentUser.role === 'teacher') {
       try {
-        await setDoc(doc(db, "active_classes", newCode), {
+        const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
+        await setDoc(doc(db, "active_classes", hostDocId), {
           roomCode: newCode,
-          hostName: currentUser.name, // Aquí es donde se toma el nombre exacto de la cuenta de quien crea la sala
+          hostName: currentUser.name, 
           createdAt: serverTimestamp()
         });
       } catch (error) {
@@ -204,8 +206,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           timestamp: serverTimestamp()
         }).catch((e) => console.error("Error cerrando sala:", e));
         
-        // NUEVO: Eliminar la sala del Radar de Estudiantes
-        deleteDoc(doc(db, "active_classes", roomCode)).catch(e => console.error("Error eliminando sala del radar:", e));
+        // CORRECCIÓN: Eliminamos la sala buscando por el nombre del profesor
+        const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
+        deleteDoc(doc(db, "active_classes", hostDocId)).catch(e => console.error("Error eliminando sala del radar:", e));
       }
 
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -452,6 +455,21 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
+  // LÓGICA DE FILTRADO PARA ESTUDIANTES INSCRITOS
+  // ==========================================
+  const visibleClasses = activeLiveClasses.filter(liveClass => {
+    // Si eres administrador o profesor, ves todas las salas por defecto para poder monitorear
+    if (currentUser.role === 'admin' || currentUser.role === 'teacher') return true;
+    
+    // Si el estudiante NO tiene profesores asignados, no ve ningún botón
+    if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
+
+    // Solo mostramos el botón si el nombre del facilitador que creó la sala está en la lista del estudiante
+    return currentUser.assignedTeachers.includes(liveClass.hostName); 
+  });
+
+
+  // ==========================================
   // RENDER 1: LOBBY
   // ==========================================
   if (!isInRoom) {
@@ -478,22 +496,21 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
                 </div>
 
-                {/* NUEVO: RADAR DE CLASES ACTIVAS (BOTONES DIRECTOS) */}
-                {activeLiveClasses.length > 0 && (
+                {/* NUEVO: RADAR DE CLASES ACTIVAS (FILTRADO) */}
+                {visibleClasses.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-slate-100">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                       <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                       Transmisiones en Vivo Ahora
                     </h3>
                     <div className="grid gap-3">
-                      {activeLiveClasses.map(liveClass => (
+                      {visibleClasses.map(liveClass => (
                         <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
                               <Video className="w-5 h-5" />
                             </div>
                             <div>
-                              {/* AQUÍ ESTÁ EL BLINDAJE: Toma el nombre dinámico o dice "Facilitador" */}
                               <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
                               <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
                             </div>
@@ -518,7 +535,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 )}
 
                 {/* FORMULARIO MANUAL INTACTO */}
-                <form onSubmit={joinRoom} className={`space-y-4 ${activeLiveClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
+                <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
