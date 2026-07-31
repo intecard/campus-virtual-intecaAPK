@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import * as mammoth from "mammoth"; // 🧠 NUEVO: El Motor Extractor de Word Nativo
 import { 
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
@@ -199,59 +200,141 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // IA: GENERACIÓN AUTOMÁTICA DE MALLA
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.name.endsWith('.docx')) {
+      alert("Formato Inválido: Sube un archivo de Microsoft Word (.docx) para que el motor nativo pueda leerlo.");
+      e.target.value = '';
+      return;
+    }
+
     setIsGeneratingAI(true);
 
-    try {
-      await new Promise(resolve => setTimeout(resolve, 3500));
-      
-      const aiGeneratedModules = [
-        {
-          id: `mod_${Date.now()}_1`,
-          title: "Módulo 1: Fundamentos (Generado por IA)",
-          description: "Introducción extraída del documento.",
-          examType: 'native',
-          examUrl: "",
-          examQuestions: [
-            { question: "¿Cuál es el concepto principal explicado en la introducción?", options: ["Administración de recursos", "Interoperabilidad LTI", "Ninguna de las anteriores"], correct: 0 },
-            { question: "¿Qué formato se utiliza para evaluaciones dentro de la plataforma?", options: ["Solo descargas", "Exámenes Nativos y Textos", "Hojas de cálculo"], correct: 1 }
-          ],
-          lessons: [
-            { id: `les_${Date.now()}_11`, title: "1.1 Conceptos Básicos", type: 'video', contentUrl: "", videoUrl: "", taskType: 'text', taskDescription: "Redacta un análisis de 100 palabras sobre el tema principal.", taskUrl: "" },
-            { id: `les_${Date.now()}_12`, title: "1.2 Marco Teórico", type: 'pdf', contentUrl: "", videoUrl: "", taskType: 'file', taskDescription: "Descarga el PDF adjunto y sube tu resolución.", taskUrl: "" }
-          ]
-        },
-        {
-          id: `mod_${Date.now()}_2`,
-          title: "Módulo 2: Desarrollo Práctico (Generado por IA)",
-          description: "Ejercicios extraídos del documento.",
-          examType: 'none',
-          examUrl: "",
-          examQuestions: [],
-          lessons: [
-            { id: `les_${Date.now()}_21`, title: "2.1 Casos de Estudio y Práctica", type: 'task', contentUrl: "", videoUrl: "", taskType: 'text', taskDescription: "Explica tu estrategia para el caso práctico.", taskUrl: "" }
-          ]
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        // El motor procesa el Word crudo
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        const text = result.value;
+
+        if (!text || text.trim() === '') {
+          alert("El documento parece estar vacío o protegido.");
+          setIsGeneratingAI(false);
+          return;
         }
-      ];
 
-      setCourseForm((prev: any) => ({
-        ...prev,
-        modules: [...(prev.modules || []), ...aiGeneratedModules]
-      }));
+        // Lógica cerebral: Leer líneas y estructurar
+        const lines = text.split('\n').filter(l => l.trim() !== '');
+        const newModules: any[] = [];
+        let currentModule: any = null;
+        let currentLesson: any = null;
 
-      alert("¡Malla curricular auto-generada con éxito a partir de tu documento!");
-    } catch (error) {
-      console.error("Error generando malla:", error);
-      alert("Hubo un error procesando el documento con Inteligencia Artificial.");
-    } finally {
+        lines.forEach(line => {
+          const lowerLine = line.trim().toLowerCase();
+
+          // 1. Detectar Módulo Nuevo
+          if (lowerLine.startsWith('módulo') || lowerLine.startsWith('modulo') || lowerLine.startsWith('unidad')) {
+            currentModule = {
+              id: `mod_${Date.now()}_${Math.random()}`,
+              title: line.trim().substring(0, 100), // Máximo 100 letras
+              description: "",
+              examType: 'none',
+              examUrl: "",
+              examQuestions: [],
+              lessons: []
+            };
+            newModules.push(currentModule);
+            currentLesson = null; // Reiniciar tema actual
+          } 
+          // 2. Detectar Tema Nuevo
+          else if (lowerLine.startsWith('tema') || lowerLine.startsWith('lección') || lowerLine.startsWith('leccion') || lowerLine.startsWith('clase')) {
+            // Si hay un tema sin haber creado módulo antes, crear un "Módulo General"
+            if (!currentModule) {
+              currentModule = {
+                id: `mod_default_${Date.now()}`,
+                title: "Módulo Principal",
+                description: "",
+                examType: 'none',
+                examUrl: "",
+                examQuestions: [],
+                lessons: []
+              };
+              newModules.push(currentModule);
+            }
+            currentLesson = {
+              id: `les_${Date.now()}_${Math.random()}`,
+              title: line.trim().substring(0, 100),
+              type: 'task', // Por defecto creamos espacio para subir documentos
+              contentUrl: "",
+              videoUrl: "",
+              taskType: 'text',
+              taskDescription: "Analiza el contenido de este tema.",
+              taskUrl: ""
+            };
+            currentModule.lessons.push(currentLesson);
+          } 
+          // 3. Todo lo demás es descripción del tema o del módulo
+          else {
+            if (currentLesson && currentLesson.taskDescription.length < 200) {
+              currentLesson.taskDescription += " " + line.trim();
+            } else if (currentModule && currentModule.description.length < 200) {
+              currentModule.description += " " + line.trim();
+            }
+          }
+        });
+
+        // Seguro contra fallos: Si el documento no seguía las reglas, creamos un bloque general
+        if (newModules.length === 0) {
+          newModules.push({
+            id: `mod_fallback_${Date.now()}`,
+            title: "Módulo Creado desde Documento",
+            description: "Texto extraído y compactado.",
+            examType: 'none',
+            examUrl: "",
+            examQuestions: [],
+            lessons: [
+              {
+                id: `les_fallback_${Date.now()}`,
+                title: "Material Extraído",
+                type: 'task',
+                contentUrl: "",
+                videoUrl: "",
+                taskType: 'text',
+                taskDescription: text.substring(0, 300) + "...",
+                taskUrl: ""
+              }
+            ]
+          });
+        }
+
+        // Inyectar el resultado al curso en vivo
+        setCourseForm((prev: any) => ({
+          ...prev,
+          modules: [...(prev.modules || []), ...newModules]
+        }));
+
+        alert("¡Malla Curricular generada automáticamente a partir del documento!");
+      } catch (error) {
+        console.error("Error al extraer texto del Word:", error);
+        alert("Ocurrió un error leyendo la estructura interna del documento Word.");
+      } finally {
+        setIsGeneratingAI(false);
+        e.target.value = ''; // Limpiar el input para volver a usarlo
+      }
+    };
+
+    reader.onerror = () => {
+      alert("El navegador bloqueó la lectura del archivo local.");
       setIsGeneratingAI(false);
-      e.target.value = ''; 
-    }
+      e.target.value = '';
+    };
+
+    reader.readAsArrayBuffer(file);
   };
 
   // ==========================================
@@ -1096,16 +1179,16 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                     <h3 className="font-bold text-slate-800">Malla Curricular Dinámica</h3>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                    {/* ✨ BOTÓN MAGICO DE IA PARA AUTO-GENERAR MALLA ✨ */}
+                    {/* ✨ MOTOR ALGORÍTMICO NATIVO: AUTO-GENERAR MALLA ✨ */}
                     <label 
                       className={`bg-indigo-50 text-indigo-600 border border-indigo-200 px-3 py-2 rounded-xl text-[11px] font-bold flex items-center gap-1.5 hover:bg-indigo-100 transition-colors cursor-pointer shadow-sm ${isGeneratingAI ? 'opacity-50 pointer-events-none' : ''}`}
                       title="Sube un manual en PDF o Word para auto-completar los módulos"
                     >
                       {isGeneratingAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                      {isGeneratingAI ? 'Procesando Documento...' : 'Auto-Generar con IA (Doc)'}
+                      {isGeneratingAI ? 'Leyendo Documento...' : 'Auto-Generar Malla (Word)'}
                       <input 
                         type="file" 
-                        accept=".pdf,.doc,.docx" 
+                        accept=".docx" 
                         className="hidden" 
                         onChange={handleAIGeneration} 
                         disabled={isGeneratingAI} 
@@ -1121,7 +1204,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                 {safeFormModules.length === 0 ? (
                   <div className="text-center py-10 bg-white rounded-2xl border border-slate-200 border-dashed">
                     <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs text-slate-400">Construye el temario o sube un documento para usar la IA.</p>
+                    <p className="text-xs text-slate-400">Construye el temario o sube un documento Word (.docx) para estructurarlo automáticamente.</p>
                   </div>
                 ) : (
                   safeFormModules.map((mod: any, mIndex: number) => {
@@ -1145,70 +1228,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             className="font-bold text-sm bg-transparent border-b-2 border-slate-300 focus:border-emerald-500 outline-none w-11/12 pb-1.5" placeholder="Título Módulo" 
                           />
                           
-                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
-                          <div className="mt-2 bg-white p-3 rounded-xl border border-slate-200">
-                            <label className="block text-[9px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
-                            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                              <select 
-                                value={mod.examType || 'none'} 
-                                onChange={(e) => { const newMods = [...safeFormModules]; newMods[mIndex].examType = e.target.value; setCourseForm({...courseForm, modules: newMods}); }}
-                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-lg p-2 text-xs outline-none focus:border-rose-500 w-full sm:w-auto"
-                              >
-                                <option value="none">Sin Examen Final</option>
-                                <option value="file">Examen para Descargar/Subir (Manuscrito)</option>
-                                <option value="embed">Formulario Google / Microsoft Forms</option>
-                                <option value="native">Cuestionario Interactivo Nativo</option>
-                              </select>
-
-                              {(mod.examType === 'file' || mod.examType === 'embed') && (
-                                <div className="flex-1 w-full flex gap-1.5">
-                                  <input type="text" value={mod.examUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].examUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs w-full outline-none focus:border-rose-500" placeholder="Ej. Link de Google Forms o sube archivo..."/>
-                                  {mod.examType === 'file' && (
-                                    <label className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingExamModuleId === mod.id ? 'opacity-50 pointer-events-none' : ''}`} title="Subir archivo a Cloudinary">
-                                      {uploadingExamModuleId === mod.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-                                      <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleModuleExamUpload(mod.id, e.target.files[0]); }} />
-                                    </label>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                            
-                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
-                            {mod.examType === 'native' && (
-                               <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                                  <div className="flex justify-between items-center">
-                                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Preguntas del Cuestionario</span>
-                                     <button onClick={() => {
-                                        const nm = [...safeFormModules];
-                                        if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
-                                        nm[mIndex].examQuestions.push({ question: "", options: ["", ""], correct: 0 });
-                                        setCourseForm({...courseForm, modules: nm});
-                                     }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Pregunta</button>
-                                  </div>
-                                  {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas.</p> : (
-                                     mod.examQuestions.map((q: any, qIdx: number) => (
-                                        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative">
-                                           <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions.splice(qIdx, 1); setCourseForm({...courseForm, modules: nm}); }} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-50 p-1 rounded"><X className="w-3 h-3"/></button>
-                                           <input type="text" placeholder={`Pregunta ${qIdx + 1}...`} value={q.question} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].question = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="w-11/12 text-xs font-bold bg-transparent border-b border-slate-300 focus:border-rose-500 outline-none mb-3 pb-1"/>
-                                           <div className="space-y-2 pl-2">
-                                              {q.options.map((opt: string, oIdx: number) => (
-                                                 <div key={oIdx} className="flex items-center gap-2">
-                                                    <input type="radio" className="accent-rose-500" checked={q.correct === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
-                                                    <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500" placeholder={`Opción ${oIdx + 1}`}/>
-                                                    {q.options.length > 2 && <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.splice(oIdx, 1); if(q.correct>=oIdx && q.correct>0) nm[mIndex].examQuestions[qIdx].correct--; setCourseForm({...courseForm, modules: nm}); }}><Trash2 className="w-3 h-3 text-slate-400 hover:text-rose-500"/></button>}
-                                                 </div>
-                                              ))}
-                                              <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.push(""); setCourseForm({...courseForm, modules: nm}); }} className="text-[10px] text-sky-600 font-bold hover:underline">+ Añadir otra opción</button>
-                                           </div>
-                                        </div>
-                                     ))
-                                  )}
-                               </div>
-                            )}
-                          </div>
-
-                          <div className="flex gap-2 mt-2">
-                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold w-fit hover:bg-slate-100 transition-colors flex items-center gap-1">
+                          <div className="flex gap-2 mt-4">
+                            <button onClick={() => handleAddLesson(mod.id, 'task')} className="text-[10px] bg-emerald-50 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-lg font-bold w-fit hover:bg-emerald-100 transition-colors flex items-center gap-1 shadow-sm">
                               <Plus className="w-3 h-3"/> Agregar Tema a este Módulo
                             </button>
                           </div>
@@ -1277,6 +1298,69 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               </div>
                             </div>
                           ))}
+
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO (MOVIDO AL FINAL) ✨ */}
+                          <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
+                            <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
+                            <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+                              <select 
+                                value={mod.examType || 'none'} 
+                                onChange={(e) => { const newMods = [...safeFormModules]; newMods[mIndex].examType = e.target.value; setCourseForm({...courseForm, modules: newMods}); }}
+                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-lg p-2 text-xs outline-none focus:border-rose-500 w-full sm:w-auto"
+                              >
+                                <option value="none">Sin Examen Final</option>
+                                <option value="file">Examen para Descargar/Subir (Manuscrito)</option>
+                                <option value="embed">Formulario Google / Microsoft Forms</option>
+                                <option value="native">Cuestionario Interactivo Nativo</option>
+                              </select>
+
+                              {(mod.examType === 'file' || mod.examType === 'embed') && (
+                                <div className="flex-1 w-full flex gap-1.5">
+                                  <input type="text" value={mod.examUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].examUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs w-full outline-none focus:border-rose-500" placeholder="Ej. Link de Google Forms o sube archivo..."/>
+                                  {mod.examType === 'file' && (
+                                    <label className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingExamModuleId === mod.id ? 'opacity-50 pointer-events-none' : ''}`} title="Subir archivo a Cloudinary">
+                                      {uploadingExamModuleId === mod.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                                      <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleModuleExamUpload(mod.id, e.target.files[0]); }} />
+                                    </label>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
+                            {mod.examType === 'native' && (
+                               <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                                  <div className="flex justify-between items-center">
+                                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Preguntas del Cuestionario</span>
+                                     <button onClick={() => {
+                                        const nm = [...safeFormModules];
+                                        if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
+                                        nm[mIndex].examQuestions.push({ question: "", options: ["", ""], correct: 0 });
+                                        setCourseForm({...courseForm, modules: nm});
+                                     }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Pregunta</button>
+                                  </div>
+                                  {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas.</p> : (
+                                     mod.examQuestions.map((q: any, qIdx: number) => (
+                                        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative">
+                                           <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions.splice(qIdx, 1); setCourseForm({...courseForm, modules: nm}); }} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-50 p-1 rounded"><X className="w-3 h-3"/></button>
+                                           <input type="text" placeholder={`Pregunta ${qIdx + 1}...`} value={q.question} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].question = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="w-11/12 text-xs font-bold bg-transparent border-b border-slate-300 focus:border-rose-500 outline-none mb-3 pb-1"/>
+                                           <div className="space-y-2 pl-2">
+                                              {q.options.map((opt: string, oIdx: number) => (
+                                                 <div key={oIdx} className="flex items-center gap-2">
+                                                    <input type="radio" className="accent-rose-500" checked={q.correct === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
+                                                    <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500" placeholder={`Opción ${oIdx + 1}`}/>
+                                                    {q.options.length > 2 && <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.splice(oIdx, 1); if(q.correct>=oIdx && q.correct>0) nm[mIndex].examQuestions[qIdx].correct--; setCourseForm({...courseForm, modules: nm}); }}><Trash2 className="w-3 h-3 text-slate-400 hover:text-rose-500"/></button>}
+                                                 </div>
+                                              ))}
+                                              <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.push(""); setCourseForm({...courseForm, modules: nm}); }} className="text-[10px] text-sky-600 font-bold hover:underline">+ Añadir otra opción</button>
+                                           </div>
+                                        </div>
+                                     ))
+                                  )}
+                               </div>
+                            )}
+                          </div>
+
                         </div>
                       </div>
                     );
