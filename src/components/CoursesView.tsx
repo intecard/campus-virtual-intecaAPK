@@ -192,7 +192,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const handleAddLesson = (moduleId: string, type: 'video' | 'pdf' | 'task' = 'video') => {
-    const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "", taskType: 'none', taskDescription: "", taskUrl: "" };
+    // ✨ CORRECCIÓN: Agregado textContent para almacenar el desarrollo del tema manual
+    const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "", textContent: "", taskType: 'none', taskDescription: "", taskUrl: "" };
     setCourseForm((prev: any) => ({
       ...prev,
       modules: prev.modules.map((m: any) => m.id === moduleId ? { ...m, lessons: [...(m.lessons || []), newLesson] } : m)
@@ -241,7 +242,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           if (lowerLine.startsWith('módulo') || lowerLine.startsWith('modulo') || lowerLine.startsWith('unidad')) {
             currentModule = {
               id: `mod_${Date.now()}_${Math.random()}`,
-              title: line.trim().substring(0, 100), // Máximo 100 letras
+              title: line.trim().substring(0, 150), 
               description: "",
               examType: 'none',
               examUrl: "",
@@ -268,22 +269,25 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             }
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
-              title: line.trim().substring(0, 100),
-              type: 'task', // Por defecto creamos espacio para subir documentos
+              title: line.trim().substring(0, 150),
+              type: 'task',
               contentUrl: "",
               videoUrl: "",
-              taskType: 'text',
-              taskDescription: "Analiza el contenido de este tema.",
+              textContent: "", // ✨ CORRECCIÓN: Contenedor preparado para la teoría
+              taskType: 'none', // Por defecto sin tarea para no confundir
+              taskDescription: "",
               taskUrl: ""
             };
             currentModule.lessons.push(currentLesson);
           } 
-          // 3. Todo lo demás es descripción del tema o del módulo
+          // 3. ✨ CORRECCIÓN: Todo lo demás es DESARROLLO TEÓRICO (sin límites)
           else {
-            if (currentLesson && currentLesson.taskDescription.length < 200) {
-              currentLesson.taskDescription += " " + line.trim();
-            } else if (currentModule && currentModule.description.length < 200) {
-              currentModule.description += " " + line.trim();
+            if (currentLesson) {
+              // Si estamos dentro de un tema, sumamos el texto al desarrollo del tema, con saltos de línea
+              currentLesson.textContent = (currentLesson.textContent ? currentLesson.textContent + "\n\n" : "") + line.trim();
+            } else if (currentModule) {
+              // Si no hay temas aún, es la descripción introductoria del módulo
+              currentModule.description = (currentModule.description ? currentModule.description + " " : "") + line.trim();
             }
           }
         });
@@ -292,20 +296,21 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         if (newModules.length === 0) {
           newModules.push({
             id: `mod_fallback_${Date.now()}`,
-            title: "Módulo Creado desde Documento",
-            description: "Texto extraído y compactado.",
+            title: "Módulo Generado desde Documento",
+            description: "No se detectaron títulos de Módulos o Temas. Se ha extraído todo el contenido.",
             examType: 'none',
             examUrl: "",
             examQuestions: [],
             lessons: [
               {
                 id: `les_fallback_${Date.now()}`,
-                title: "Material Extraído",
+                title: "Desarrollo Completo del Documento",
                 type: 'task',
                 contentUrl: "",
                 videoUrl: "",
-                taskType: 'text',
-                taskDescription: text.substring(0, 300) + "...",
+                textContent: text, // ✨ Todo el texto va aquí directo
+                taskType: 'none',
+                taskDescription: "",
                 taskUrl: ""
               }
             ]
@@ -318,7 +323,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           modules: [...(prev.modules || []), ...newModules]
         }));
 
-        alert("¡Malla Curricular generada automáticamente a partir del documento!");
+        alert("¡Malla Curricular generada! El desarrollo teórico ha sido extraído correctamente.");
       } catch (error) {
         console.error("Error al extraer texto del Word:", error);
         alert("Ocurrió un error leyendo la estructura interna del documento Word.");
@@ -739,6 +744,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   </div>
                                 </div>
 
+                                {/* ✨ CORRECCIÓN: VISTA PARA EL ESTUDIANTE DE LA TEORÍA EXTRAÍDA ✨ */}
+                                {lesson.textContent && (
+                                  <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mt-2 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
+                                    {lesson.textContent}
+                                  </div>
+                                )}
+
                                 {/* ✨ PLATAFORMA INTEGRADA: TAREA DEL TEMA ✨ */}
                                 {lesson.taskType && lesson.taskType !== 'none' && (
                                   <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 mt-2">
@@ -946,7 +958,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <ClipboardCheck className="w-5 h-5 text-indigo-600" />
                   <h3 className="font-bold text-slate-900 text-lg">Fiscalización Metodológica</h3>
                 </div>
-                <p className="text-xs text-slate-500">Evalúe la estructura didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
+                <p className="text-xs text-slate-500">Evalúe la structure didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1295,6 +1307,18 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                     </div>
                                   )}
                                 </div>
+                              </div>
+
+                              {/* ✨ NUEVA CAJA: DESARROLLO TEÓRICO DEL TEMA (MANUAL/AUTOMÁTICO) ✨ */}
+                              <div className="mt-3">
+                                <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Desarrollo Teórico / Contenido del Tema</label>
+                                <textarea 
+                                  rows={4} 
+                                  value={lesson.textContent || ""} 
+                                  onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].textContent = e.target.value; setCourseForm({...courseForm, modules: nm}); }} 
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs outline-none focus:border-emerald-500 leading-relaxed" 
+                                  placeholder="Escribe o pega aquí toda la teoría del tema, o deja que el motor de Word lo llene automáticamente..."
+                                />
                               </div>
                             </div>
                           ))}
