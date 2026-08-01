@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import * as mammoth from "mammoth"; // 🧠 NUEVO: El Motor Extractor de Word Nativo
+import * as mammoth from "mammoth"; // 🧠 Motor Extractor de Word Nativo
 import { 
   BookOpen, ChevronRight, Clock, ArrowLeft,
   Award, Loader2, FileText, Video, Send, Plus, Trash2, Save, Image, Edit3, 
@@ -192,7 +192,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const handleAddLesson = (moduleId: string, type: 'video' | 'pdf' | 'task' = 'video') => {
-    // ✨ CORRECCIÓN: Agregado textContent para almacenar el desarrollo del tema manual
     const newLesson = { id: `les_${Date.now()}`, title: "Nuevo Tema", type, contentUrl: "", videoUrl: "", textContent: "", taskType: 'none', taskDescription: "", taskUrl: "" };
     setCourseForm((prev: any) => ({
       ...prev,
@@ -219,7 +218,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     reader.onload = async (event) => {
       try {
         const arrayBuffer = event.target?.result as ArrayBuffer;
-        // El motor procesa el Word crudo
         const result = await mammoth.extractRawText({ arrayBuffer });
         const text = result.value;
 
@@ -229,7 +227,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           return;
         }
 
-        // Lógica cerebral: Leer líneas y estructurar
         const lines = text.split('\n').filter(l => l.trim() !== '');
         const newModules: any[] = [];
         let currentModule: any = null;
@@ -250,11 +247,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               lessons: []
             };
             newModules.push(currentModule);
-            currentLesson = null; // Reiniciar tema actual
+            currentLesson = null;
           } 
           // 2. Detectar Tema Nuevo
           else if (lowerLine.startsWith('tema') || lowerLine.startsWith('lección') || lowerLine.startsWith('leccion') || lowerLine.startsWith('clase')) {
-            // Si hay un tema sin haber creado módulo antes, crear un "Módulo General"
             if (!currentModule) {
               currentModule = {
                 id: `mod_default_${Date.now()}`,
@@ -273,31 +269,28 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               type: 'task',
               contentUrl: "",
               videoUrl: "",
-              textContent: "", // ✨ CORRECCIÓN: Contenedor preparado para la teoría
-              taskType: 'none', // Por defecto sin tarea para no confundir
+              tempText: "",
+              taskType: 'none', 
               taskDescription: "",
               taskUrl: ""
             };
             currentModule.lessons.push(currentLesson);
           } 
-          // 3. ✨ CORRECCIÓN: Todo lo demás es DESARROLLO TEÓRICO (sin límites)
+          // 3. Capturar el desarrollo teórico infinito
           else {
             if (currentLesson) {
-              // Si estamos dentro de un tema, sumamos el texto al desarrollo del tema, con saltos de línea
-              currentLesson.textContent = (currentLesson.textContent ? currentLesson.textContent + "\n\n" : "") + line.trim();
-            } else if (currentModule) {
-              // Si no hay temas aún, es la descripción introductoria del módulo
-              currentModule.description = (currentModule.description ? currentModule.description + " " : "") + line.trim();
+              currentLesson.tempText += "\n" + line.trim();
+            } else if (currentModule && currentModule.description.length < 200) {
+              currentModule.description += " " + line.trim();
             }
           }
         });
 
-        // Seguro contra fallos: Si el documento no seguía las reglas, creamos un bloque general
         if (newModules.length === 0) {
           newModules.push({
             id: `mod_fallback_${Date.now()}`,
             title: "Módulo Generado desde Documento",
-            description: "No se detectaron títulos de Módulos o Temas. Se ha extraído todo el contenido.",
+            description: "Se ha extraído todo el contenido.",
             examType: 'none',
             examUrl: "",
             examQuestions: [],
@@ -308,7 +301,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                 type: 'task',
                 contentUrl: "",
                 videoUrl: "",
-                textContent: text, // ✨ Todo el texto va aquí directo
+                tempText: text, 
                 taskType: 'none',
                 taskDescription: "",
                 taskUrl: ""
@@ -317,19 +310,47 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           });
         }
 
-        // Inyectar el resultado al curso en vivo
+        // ✨ MAGIA: Subir automáticamente la teoría como documento adjunto
+        for (const mod of newModules) {
+          for (const les of mod.lessons) {
+            if (les.tempText && les.tempText.trim().length > 10) {
+              try {
+                const header = `====================================================\n${les.title.toUpperCase()}\n====================================================\n\n`;
+                const blob = new Blob([header + les.tempText.trim()], { type: 'text/plain' });
+                const docFile = new File([blob], `Teoria_${Date.now()}.txt`, { type: 'text/plain' });
+                
+                const formData = new FormData();
+                formData.append("file", docFile);
+                formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+                
+                const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`, {
+                  method: "POST", body: formData,
+                });
+                const uploadData = await response.json();
+                
+                if (uploadData.secure_url) {
+                  les.contentUrl = uploadData.secure_url; 
+                }
+              } catch (e) {
+                console.error("Error subiendo teoría a la nube:", e);
+              }
+            }
+            delete les.tempText; // Limpieza
+          }
+        }
+
         setCourseForm((prev: any) => ({
           ...prev,
           modules: [...(prev.modules || []), ...newModules]
         }));
 
-        alert("¡Malla Curricular generada! El desarrollo teórico ha sido extraído correctamente.");
+        alert("¡Malla Curricular generada y desarrollo teórico subido a la nube correctamente!");
       } catch (error) {
         console.error("Error al extraer texto del Word:", error);
         alert("Ocurrió un error leyendo la estructura interna del documento Word.");
       } finally {
         setIsGeneratingAI(false);
-        e.target.value = ''; // Limpiar el input para volver a usarlo
+        e.target.value = ''; 
       }
     };
 
@@ -368,7 +389,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
 
   const handleLessonVideoUpload = async (moduleId: string, lessonId: string, file: File) => {
     if (!file) return;
-    setUploadingLessonId(lessonId);
+    setUploadingLessonId(`vid_${lessonId}`);
     try {
       const data = await handleCloudinaryUpload(file, "video");
       if (data.secure_url) {
@@ -386,11 +407,31 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     finally { setUploadingLessonId(null); }
   };
 
+  const handleLessonDocUpload = async (moduleId: string, lessonId: string, file: File) => {
+    if (!file) return;
+    setUploadingLessonId(`doc_${lessonId}`);
+    try {
+      const data = await handleCloudinaryUpload(file, "auto");
+      if (data.secure_url) {
+        setCourseForm((prev: any) => {
+          const nm = [...prev.modules];
+          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
+          if (mIdx > -1) {
+            const lIdx = nm[mIdx].lessons.findIndex((l: any) => l.id === lessonId);
+            if (lIdx > -1) nm[mIdx].lessons[lIdx].contentUrl = data.secure_url;
+          }
+          return { ...prev, modules: nm };
+        });
+      }
+    } catch (error: any) { alert(`Error al subir el documento: ${error.message}`); } 
+    finally { setUploadingLessonId(null); }
+  };
+
   const handleLessonTaskUpload = async (moduleId: string, lessonId: string, file: File) => {
     if (!file) return;
     setUploadingTaskLessonId(lessonId);
     try {
-      const data = await handleCloudinaryUpload(file, "auto"); // "auto" permite Docs, PDF, etc.
+      const data = await handleCloudinaryUpload(file, "auto"); 
       if (data.secure_url) {
         setCourseForm((prev: any) => {
           const nm = [...prev.modules];
@@ -658,7 +699,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // RENDER 2: DETALLE DEL CURSO (REPRODUCTOR)
+  // RENDER 2: DETALLE DEL CURSO (REPRODUCTOR ESTUDIANTE)
   // ==========================================
   const renderCourseDetail = () => {
     if (!selectedCourse) return null;
@@ -736,22 +777,24 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                         <FileText className="w-3 h-3"/> Material Escrito
                                       </a>
                                     )}
-                                    {lesson.videoUrl && (
-                                      <a href={lesson.videoUrl} target="_blank" rel="noreferrer" className="text-[10px] bg-sky-50 text-sky-600 px-3 py-1.5 rounded-lg font-bold hover:bg-sky-100 transition-colors flex items-center gap-1.5 border border-sky-100">
-                                        <Video className="w-3 h-3"/> Ver Video
-                                      </a>
-                                    )}
                                   </div>
                                 </div>
 
-                                {/* ✨ CORRECCIÓN: VISTA PARA EL ESTUDIANTE DE LA TEORÍA EXTRAÍDA ✨ */}
+                                {/* ✨ MAGIA: REPRODUCTOR DE VIDEO INTEGRADO PARA EL ESTUDIANTE ✨ */}
+                                {lesson.videoUrl && (
+                                  <div className="mt-3 w-full rounded-xl overflow-hidden border border-slate-200 bg-black shadow-sm">
+                                    <video src={lesson.videoUrl} controls controlsList="nodownload" className="w-full max-h-[450px] object-contain outline-none" />
+                                  </div>
+                                )}
+
+                                {/* VISTA PARA EL ESTUDIANTE DE LA TEORÍA EXTRAÍDA */}
                                 {lesson.textContent && (
                                   <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mt-2 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
                                     {lesson.textContent}
                                   </div>
                                 )}
 
-                                {/* ✨ PLATAFORMA INTEGRADA: TAREA DEL TEMA ✨ */}
+                                {/* PLATAFORMA INTEGRADA: TAREA DEL TEMA */}
                                 {lesson.taskType && lesson.taskType !== 'none' && (
                                   <div className="bg-indigo-50/30 border border-indigo-100 rounded-xl p-4 mt-2">
                                     <div className="flex items-center gap-2 mb-2"><ClipboardCheck className="w-4 h-4 text-indigo-600"/><h5 className="font-bold text-xs text-slate-800">Evaluación Práctica</h5></div>
@@ -790,7 +833,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             ))
                           )}
 
-                          {/* ✨ PLATAFORMA INTEGRADA: EXAMEN DE MÓDULO ✨ */}
+                          {/* PLATAFORMA INTEGRADA: EXAMEN DE MÓDULO */}
                           {mod.examType && mod.examType !== 'none' && (
                             <div className="mt-6 p-6 bg-rose-50/50 border-2 border-rose-100 rounded-2xl shadow-sm">
                               <div className="flex items-center gap-2 mb-4">
@@ -958,7 +1001,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <ClipboardCheck className="w-5 h-5 text-indigo-600" />
                   <h3 className="font-bold text-slate-900 text-lg">Fiscalización Metodológica</h3>
                 </div>
-                <p className="text-xs text-slate-500">Evalúe la structure didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
+                <p className="text-xs text-slate-500">Evalúe la estructura didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1261,22 +1304,57 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               }} className="bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs font-bold w-11/12 pb-1" placeholder="Título del Tema"/>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                                {/* RECURSOS DE ESTUDIO */}
+                                {/* ✨ NUEVO: RECURSOS ACADÉMICOS CON SUBIDA NATIVA Y MINI-PLAYER ✨ */}
                                 <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
                                   <span className="text-[9px] font-bold text-slate-400 uppercase">Recursos Académicos</span>
+                                  
                                   <div>
-                                    <label className="block text-[9px] text-slate-500 mb-1">Doc/PDF Web</label>
-                                    <input type="text" value={lesson.contentUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Enlace HTTPS..."/>
+                                    <label className="block text-[9px] text-slate-500 mb-1">Documento del Tema (PDF/Word)</label>
+                                    {lesson.contentUrl ? (
+                                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-md p-2">
+                                        <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-700 font-bold flex items-center gap-1.5 hover:underline overflow-hidden">
+                                          <FileText className="w-3.5 h-3.5 shrink-0" /> Documento Subido
+                                        </a>
+                                        <button onClick={() => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = ""; setCourseForm({...courseForm, modules: nm}); }} className="text-emerald-600 hover:text-rose-500 p-1 bg-white rounded shadow-sm">
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="flex gap-1.5">
+                                        <input type="text" value={lesson.contentUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Pega URL o sube archivo..."/>
+                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === `doc_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
+                                          {uploadingLessonId === `doc_${lesson.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                                          <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonDocUpload(mod.id, lesson.id, e.target.files[0]); }} />
+                                        </label>
+                                      </div>
+                                    )}
                                   </div>
+
                                   <div>
                                     <label className="block text-[9px] text-slate-500 mb-1">Video Clase</label>
-                                    <div className="flex gap-1.5">
-                                      <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Enlace de video..."/>
-                                      <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        {uploadingLessonId === lesson.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
-                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]); }} />
-                                      </label>
-                                    </div>
+                                    {lesson.videoUrl ? (
+                                      <div className="flex flex-col gap-2 bg-sky-50 border border-sky-200 rounded-md p-2">
+                                        <div className="w-full bg-black rounded overflow-hidden">
+                                          <video src={lesson.videoUrl} controls className="w-full h-32 object-contain" />
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                          <span className="text-[10px] text-sky-700 font-bold flex items-center gap-1.5">
+                                            <Video className="w-3.5 h-3.5" /> Video Integrado
+                                          </span>
+                                          <button onClick={() => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = ""; setCourseForm({...courseForm, modules: nm}); }} className="text-sky-600 hover:text-rose-500 p-1 bg-white rounded shadow-sm">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="flex gap-1.5">
+                                        <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Pega URL o sube archivo..."/>
+                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === `vid_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
+                                          {uploadingLessonId === `vid_${lesson.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                                          <input type="file" accept="video/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]); }} />
+                                        </label>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                                 
@@ -1298,12 +1376,25 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   )}
 
                                   {lesson.taskType === 'file' && (
-                                    <div className="flex gap-1.5">
-                                      <input type="text" value={lesson.taskUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-indigo-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-indigo-500" placeholder="Material base (URL o Sube archivo)..."/>
-                                      <label className={`bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors shadow-sm ${uploadingTaskLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                        {uploadingTaskLessonId === lesson.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
-                                        <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonTaskUpload(mod.id, lesson.id, e.target.files[0]); }} />
-                                      </label>
+                                    <div className="mt-2">
+                                      {lesson.taskUrl ? (
+                                        <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-md p-2">
+                                          <a href={lesson.taskUrl} target="_blank" rel="noreferrer" className="text-[10px] text-indigo-700 font-bold flex items-center gap-1.5 hover:underline">
+                                            <FileText className="w-3.5 h-3.5 shrink-0" /> Archivo de Tarea Subido
+                                          </a>
+                                          <button onClick={() => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskUrl = ""; setCourseForm({...courseForm, modules: nm}); }} className="text-indigo-600 hover:text-rose-500 p-1 bg-white rounded shadow-sm">
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="flex gap-1.5">
+                                          <input type="text" value={lesson.taskUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].taskUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-indigo-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-indigo-500" placeholder="Material base (URL o Sube archivo)..."/>
+                                          <label className={`bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors shadow-sm ${uploadingTaskLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                            {uploadingTaskLessonId === lesson.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
+                                            <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonTaskUpload(mod.id, lesson.id, e.target.files[0]); }} />
+                                          </label>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
