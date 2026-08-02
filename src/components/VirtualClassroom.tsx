@@ -159,15 +159,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
-      // 🔥 TRUCO MAESTRO ACTUALIZADO: Forzamos el permiso antes de inyectar el iframe
-      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        stream.getTracks().forEach(track => track.stop());
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      stream.getTracks().forEach(track => track.stop());
     } catch (err) {
       console.warn("Permisos denegados o hardware no detectado:", err);
-      // Alerta para que el estudiante sepa que si el botón está gris, es porque su celular lo bloqueó
-      alert("⚠️ Atención: Tu dispositivo o navegador limitó el acceso. Si no puedes encender el micrófono, revisa los permisos de la aplicación en tu celular.");
     }
     setRoomCode(code);
     setIsInRoom(true);
@@ -675,11 +670,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
-          {/* 🔥 MODIFICACIÓN CLAVE DE SEGURIDAD PARA MICROFONO EN APLICACIÓN MÓVIL 🔥 */}
           <iframe
-            allow="camera *; microphone *; display-capture *; autoplay *; clipboard-write *; fullscreen *"
-            allowFullScreen
-            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false&config.startWithAudioMuted=false&config.startWithVideoMuted=false${jitsiConfigParams}`}
+            allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
+            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
