@@ -1282,31 +1282,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               }} className="bg-transparent border-b border-slate-300 focus:border-emerald-500 outline-none text-xs font-bold w-11/12 pb-1" placeholder="Título del Tema"/>
                               
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                                {/* ✨ NUEVO: RECURSOS ACADÉMICOS CON SUBIDA NATIVA Y MINI-PLAYER ✨ */}
+                                {/* ✨ RECURSOS ACADÉMICOS: SÓLO VIDEO CLASE ✨ */}
                                 <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
                                   <span className="text-[9px] font-bold text-slate-400 uppercase">Recursos Académicos</span>
-                                  
-                                  <div>
-                                    <label className="block text-[9px] text-slate-500 mb-1">Documento del Tema (PDF/Word)</label>
-                                    {lesson.contentUrl ? (
-                                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-md p-2">
-                                        <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-700 font-bold flex items-center gap-1.5 hover:underline overflow-hidden">
-                                          <FileText className="w-3.5 h-3.5 shrink-0" /> Documento Subido
-                                        </a>
-                                        <button onClick={() => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = ""; setCourseForm({...courseForm, modules: nm}); }} className="text-emerald-600 hover:text-rose-500 p-1 bg-white rounded shadow-sm">
-                                          <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div className="flex gap-1.5">
-                                        <input type="text" value={lesson.contentUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].contentUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-emerald-500" placeholder="Pega URL o sube archivo..."/>
-                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === `doc_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
-                                          {uploadingLessonId === `doc_${lesson.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
-                                          <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonDocUpload(mod.id, lesson.id, e.target.files[0]); }} />
-                                        </label>
-                                      </div>
-                                    )}
-                                  </div>
 
                                   <div>
                                     <label className="block text-[9px] text-slate-500 mb-1">Video Clase</label>
@@ -1562,4 +1540,4 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       {viewMode === 'detail' && renderCourseDetail()}
     </div>
   );
-} 
+}
