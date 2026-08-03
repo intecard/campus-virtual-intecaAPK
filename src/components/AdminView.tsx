@@ -70,6 +70,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
   
   // Global Broadcast Notification State
   const [broadcastText, setBroadcastText] = useState("");
+  const [broadcastTarget, setBroadcastTarget] = useState<"all" | "student" | "teacher" | "observer" | "admin">("all");
   const [broadcastSending, setBroadcastSending] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
 
@@ -358,14 +359,22 @@ export default function AdminView({ currentUser }: AdminViewProps) {
     setBroadcastSending(true);
     setBroadcastSuccess(false);
     try {
+      // Determinamos el prefijo para mayor claridad
+      let prefix = "[ANUNCIO GENERAL]";
+      if (broadcastTarget === 'student') prefix = "[AVISO A ESTUDIANTES]";
+      else if (broadcastTarget === 'teacher') prefix = "[AVISO A DOCENTES]";
+      else if (broadcastTarget === 'observer') prefix = "[AVISO A AUDITORES]";
+      else if (broadcastTarget === 'admin') prefix = "[AVISO A SISTEMAS]";
+
       if (typeof addNotificationToUser === 'function') {
-        await addNotificationToUser("all", `[ANUNCIO GENERAL]: ${broadcastText}`);
+        // Pasamos el broadcastTarget seleccionado para que el backend filtre a quién le llega
+        await addNotificationToUser(broadcastTarget, `${prefix}: ${broadcastText}`);
       }
       
       if (typeof logUserActivity === 'function') {
         await logUserActivity(
           currentUser.id, currentUser.name, currentUser.email, currentUser.role,
-          "BROADCAST", `Anuncio global emitido: "${broadcastText.substring(0, 60)}..."`
+          "BROADCAST", `Anuncio emitido a [${broadcastTarget.toUpperCase()}]: "${broadcastText.substring(0, 60)}..."`
         );
       }
 
@@ -629,28 +638,44 @@ export default function AdminView({ currentUser }: AdminViewProps) {
             </div>
           </div>
 
-          {/* Anuncio Global */}
+          {/* Anuncio Global Segmentado */}
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col justify-between space-y-4">
             <div>
               <h3 className="font-bold text-slate-950 font-display flex items-center gap-2">
                 <BellRing className="w-5 h-5 text-sky-500 animate-pulse" />
-                <span>Emisión de Anuncio General Inmediato</span>
+                <span>Emisión de Anuncio Segmentado</span>
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                Redacte una alerta que aparecerá en tiempo real en los centros de notificaciones de todos los usuarios vinculados al campus virtual.
+                Redacte una alerta que aparecerá en tiempo real en los centros de notificaciones del público que seleccione.
               </p>
             </div>
 
-            <form onSubmit={handleBroadcastAnnouncement} className="space-y-3.5">
+            <form onSubmit={handleBroadcastAnnouncement} className="space-y-3.5 flex-1 flex flex-col">
+              
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Público Objetivo (Destinatarios):</label>
+                <select
+                  value={broadcastTarget}
+                  onChange={(e) => setBroadcastTarget(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-sky-500 font-bold text-slate-700 cursor-pointer"
+                >
+                  <option value="all">📢 Todos los Usuarios (General)</option>
+                  <option value="student">🎓 Solo Estudiantes</option>
+                  <option value="teacher">👨‍🏫 Solo Profesores / Titulares</option>
+                  <option value="observer">📋 Solo Auditores / Reguladores</option>
+                  {isMaster && <option value="admin">🛡️ Solo Administradores TI</option>}
+                </select>
+              </div>
+
               <textarea
                 value={broadcastText}
                 onChange={(e) => setBroadcastText(e.target.value)}
-                placeholder="Atención comunidad de INTECA: Se realizará mantenimiento programado del servidor de comunicaciones..."
-                className="w-full min-h-[100px] bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:ring-1 focus:ring-sky-500 focus:bg-white focus:outline-none font-medium leading-relaxed"
+                placeholder="Escriba su mensaje aquí..."
+                className="w-full flex-1 min-h-[80px] bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs focus:ring-1 focus:ring-sky-500 focus:bg-white focus:outline-none font-medium leading-relaxed resize-none"
                 required
               ></textarea>
 
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-4 mt-auto pt-2">
                 {broadcastSuccess ? (
                   <span className="text-[11px] text-emerald-600 font-bold flex items-center gap-1">
                     <Check className="w-4 h-4" /> ¡Anuncio emitido!
@@ -662,7 +687,7 @@ export default function AdminView({ currentUser }: AdminViewProps) {
                 <button
                   type="submit"
                   disabled={broadcastSending}
-                  className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold py-2 px-5 rounded-xl transition-all shadow-md shadow-sky-500/10 disabled:opacity-50"
+                  className="bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold py-2 px-5 rounded-xl transition-all shadow-md shadow-sky-500/10 disabled:opacity-50 shrink-0"
                 >
                   {broadcastSending ? "Transmitiendo..." : "Emitir Comunicado"}
                 </button>
