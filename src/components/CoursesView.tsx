@@ -1562,4 +1562,4 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       {viewMode === 'detail' && renderCourseDetail()}
     </div>
   );
-}
+} 
