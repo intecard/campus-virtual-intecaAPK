@@ -200,7 +200,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (ACTUALIZADO)
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -249,7 +249,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             newModules.push(currentModule);
             currentLesson = null;
           } 
-          // 2. Detectar Tema Nuevo
+          // 2. Detectar Examen (Activa el Examen Nativo Automáticamente)
+          else if (lowerLine.includes('examen de tema') || lowerLine.includes('examen teórico') || lowerLine.includes('evaluación final')) {
+            if (currentModule) {
+              currentModule.examType = 'native'; // Deja el cuestionario interactivo listo para usar
+            }
+          }
+          // 3. Detectar Tema Nuevo
           else if (lowerLine.startsWith('tema') || lowerLine.startsWith('lección') || lowerLine.startsWith('leccion') || lowerLine.startsWith('clase')) {
             if (!currentModule) {
               currentModule = {
@@ -266,20 +272,21 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
               title: line.trim().substring(0, 150),
-              type: 'task',
+              type: 'video', // Valor por defecto
               contentUrl: "",
               videoUrl: "",
-              tempText: "",
+              textContent: "", // AQUÍ GUARDAMOS LA TEORÍA DIRECTAMENTE
               taskType: 'none', 
               taskDescription: "",
               taskUrl: ""
             };
             currentModule.lessons.push(currentLesson);
           } 
-          // 3. Capturar el desarrollo teórico infinito
+          // 4. Capturar el desarrollo teórico directo al TextContent
           else {
             if (currentLesson) {
-              currentLesson.tempText += "\n" + line.trim();
+              // Agrega saltos de línea para que los párrafos se vean ordenados
+              currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line.trim();
             } else if (currentModule && currentModule.description.length < 200) {
               currentModule.description += " " + line.trim();
             }
@@ -298,10 +305,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               {
                 id: `les_fallback_${Date.now()}`,
                 title: "Desarrollo Completo del Documento",
-                type: 'task',
+                type: 'video',
                 contentUrl: "",
                 videoUrl: "",
-                tempText: text, 
+                textContent: text, 
                 taskType: 'none',
                 taskDescription: "",
                 taskUrl: ""
@@ -310,41 +317,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           });
         }
 
-        // ✨ MAGIA: Subir automáticamente la teoría como documento adjunto
-        for (const mod of newModules) {
-          for (const les of mod.lessons) {
-            if (les.tempText && les.tempText.trim().length > 10) {
-              try {
-                const header = `====================================================\n${les.title.toUpperCase()}\n====================================================\n\n`;
-                const blob = new Blob([header + les.tempText.trim()], { type: 'text/plain' });
-                const docFile = new File([blob], `Teoria_${Date.now()}.txt`, { type: 'text/plain' });
-                
-                const formData = new FormData();
-                formData.append("file", docFile);
-                formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-                
-                const response = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/raw/upload`, {
-                  method: "POST", body: formData,
-                });
-                const uploadData = await response.json();
-                
-                if (uploadData.secure_url) {
-                  les.contentUrl = uploadData.secure_url; 
-                }
-              } catch (e) {
-                console.error("Error subiendo teoría a la nube:", e);
-              }
-            }
-            delete les.tempText; // Limpieza
-          }
-        }
-
         setCourseForm((prev: any) => ({
           ...prev,
           modules: [...(prev.modules || []), ...newModules]
         }));
 
-        alert("¡Malla Curricular generada y desarrollo teórico subido a la nube correctamente!");
+        alert("¡Malla Curricular generada y desarrollo teórico inyectado correctamente!");
       } catch (error) {
         console.error("Error al extraer texto del Word:", error);
         alert("Ocurrió un error leyendo la estructura interna del documento Word.");
@@ -787,7 +765,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                   </div>
                                 )}
 
-                                {/* VISTA PARA EL ESTUDIANTE DE LA TEORÍA EXTRAÍDA */}
+                                {/* VISTA PARA EL ESTUDIANTE DE LA TEORÍA INYECTADA DIRECTAMENTE */}
                                 {lesson.textContent && (
                                   <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 mt-2 text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">
                                     {lesson.textContent}
@@ -1400,14 +1378,14 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 </div>
                               </div>
 
-                              {/* ✨ NUEVA CAJA: DESARROLLO TEÓRICO DEL TEMA (MANUAL/AUTOMÁTICO) ✨ */}
+                              {/* ✨ CAJA DE DESARROLLO TEÓRICO (DONDE EL MOTOR PEGA EL TEXTO) ✨ */}
                               <div className="mt-3">
                                 <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Desarrollo Teórico / Contenido del Tema</label>
                                 <textarea 
-                                  rows={4} 
+                                  rows={8} 
                                   value={lesson.textContent || ""} 
                                   onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].textContent = e.target.value; setCourseForm({...courseForm, modules: nm}); }} 
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs outline-none focus:border-emerald-500 leading-relaxed" 
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-4 text-xs text-slate-700 outline-none focus:border-emerald-500 leading-relaxed" 
                                   placeholder="Escribe o pega aquí toda la teoría del tema, o deja que el motor de Word lo llene automáticamente..."
                                 />
                               </div>
