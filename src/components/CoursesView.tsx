@@ -36,8 +36,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const isAdmin = currentRole === 'admin' || isMaster;
   const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
 
-  // ESTADOS DE NAVEGACIÓN Y VISTAS
-  const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio'>('catalog');
+  // ✨ ESTADOS DE NAVEGACIÓN Y VISTAS (NUEVO MODO: 'exam')
+  const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio' | 'exam'>('catalog');
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'content' | 'homework' | 'lti' | 'audit'>('content');
@@ -58,10 +58,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [uploadingExamModuleId, setUploadingExamModuleId] = useState<string | null>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   
-  // ✨ NUEVO: ESTADO PARA LA GENERACIÓN EXCLUSIVA DE EXÁMENES
+  // ESTADO PARA LA GENERACIÓN EXCLUSIVA DE EXÁMENES
   const [isGeneratingExamIndex, setIsGeneratingExamIndex] = useState<number | null>(null);
   
-  // MEMORIA DE ESTUDIANTES PARA EXÁMENES Y TAREAS NATIVAS
+  // ✨ MEMORIA DE ESTUDIANTES PARA EXÁMENES (Modo Enfoque) ✨
+  const [currentExamModule, setCurrentExamModule] = useState<any>(null);
+  const [completedExams, setCompletedExams] = useState<Record<string, number>>({});
   const [studentAnswers, setStudentAnswers] = useState<Record<string, string>>({}); 
   const [studentFiles, setStudentFiles] = useState<Record<string, File | null>>({}); 
   const [uploadingStudentFile, setUploadingStudentFile] = useState<string | null>(null);
@@ -79,7 +81,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [homeworkText, setHomeworkText] = useState("");
   const [submittingHomework, setSubmittingHomework] = useState(false);
 
-  // ✨ ESTADOS DE CONEXIÓN EN TIEMPO REAL CON FIREBASE ✨
+  // ESTADOS DE CONEXIÓN EN TIEMPO REAL CON FIREBASE
   const [liveCourses, setLiveCourses] = useState<any[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
 
@@ -100,14 +102,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }
   }, [safeUser.role, isAdmin]);
 
-  // ✨ ESCUCHADOR EN TIEMPO REAL DE CURSOS (BLINDADO CONTRA ERRORES DE ÍNDICE) ✨
+  // ESCUCHADOR EN TIEMPO REAL DE CURSOS
   useEffect(() => {
     const q = collection(db, "courses");
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedCourses: any[] = [];
       snapshot.forEach(doc => fetchedCourses.push({ id: doc.id, ...doc.data() }));
       
-      // Ordenamos localmente para evitar errores de Firestore por falta de índices
       fetchedCourses.sort((a, b) => {
         const timeA = a.createdAt?.seconds || 0;
         const timeB = b.createdAt?.seconds || 0;
@@ -139,7 +140,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         modules: Array.isArray(courseToEdit.modules) ? courseToEdit.modules : []
       });
     } else {
-      // ✨ AUTO-ASIGNACIÓN DE PROFESOR SI EL USUARIO ES TEACHER ✨
       const defaultTeacherId = safeUser.role === 'teacher' ? safeUser.id : "";
       const defaultTeacherName = safeUser.role === 'teacher' ? safeUser.name : "";
 
@@ -153,7 +153,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const saveCourseToFirebase = async () => {
-    // 🚨 ALERTAS DE VALIDACIÓN MÁS ESPECÍFICAS
     if (!courseForm.title || courseForm.title.trim() === "") {
       alert("❌ Faltan datos: Por favor, escribe un Título para el curso antes de publicar.");
       return;
@@ -174,7 +173,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       if (courseForm.id && !isMockCourse) {
         await updateDoc(doc(db, "courses", courseForm.id), courseForm);
       } else {
-        const { id, ...dataToSave } = courseForm; // Quitamos cualquier ID falso
+        const { id, ...dataToSave } = courseForm; 
         await addDoc(collection(db, "courses"), {
           ...dataToSave,
           progress: 0,
@@ -183,7 +182,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         });
       }
 
-      // 🔥 ASIGNACIÓN MAESTRA: Sincronizar al profesor en el perfil de cada alumno matriculado 🔥
       if (isAdmin && courseForm.teacher && Array.isArray(courseForm.enrolledStudents) && courseForm.enrolledStudents.length > 0) {
         const updatePromises = courseForm.enrolledStudents.map((studentId: string) => 
           updateDoc(doc(db, "users", studentId), {
@@ -224,7 +222,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const toggleStudentEnrollment = (studentId: string) => {
-    // ✨ PERMISOS RESTRINGIDOS: Solo Administradores pueden matricular ✨
     if (!isAdmin) return; 
     
     const safeStudents = Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents : [];
@@ -280,7 +277,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
         const newQuestions: any[] = [];
         
-        // Identificadores de preguntas (Ej. "1. ¿Qué es?") y opciones (Ej. "a) Respuesta")
         const preguntaRegex = /^\s*\d+[\.\-\)]\s*(.+)/;
         const opcionRegex = /^\s*[a-e][\.\-\)]\s*(.+)/i;
 
@@ -328,7 +324,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (V 3.0 ESTRICTO)
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -355,14 +351,12 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           return;
         }
 
-        // Dividimos por saltos de línea y limpiamos vacíos
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
         const newModules: any[] = [];
         let currentModule: any = null;
         let currentLesson: any = null;
-        let inExamMode = false; // Bandera para saber si el parser está leyendo el examen final
+        let inExamMode = false; 
 
-        // ✨ REGEX SUPER ESTRICTAS ✨
         const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s+\d+/i;
         const temaRegex = /^\s*(?:tema|lección|leccion|clase)\s+\d+/i;
         const examenRegex = /^\s*(?:examen|evaluación|prueba final)/i;
@@ -372,7 +366,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         lines.forEach(line => {
           const lowerLine = line.toLowerCase();
 
-          // 1. Detectar Módulo Nuevo
           if (moduloRegex.test(lowerLine)) {
             inExamMode = false;
             currentModule = {
@@ -387,7 +380,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             newModules.push(currentModule);
             currentLesson = null;
           } 
-          // 2. Detectar Examen Nativo
           else if (examenRegex.test(lowerLine) || lowerLine.includes('examen de tema')) {
             if (currentModule) {
               currentModule.examType = 'native'; 
@@ -395,7 +387,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               inExamMode = true;
             }
           }
-          // 3. Detectar Tema Nuevo
           else if (temaRegex.test(lowerLine)) {
             inExamMode = false;
             if (!currentModule) {
@@ -423,7 +414,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             };
             currentModule.lessons.push(currentLesson);
           } 
-          // 4. Leer preguntas del examen (Si estamos en el bloque de examen)
           else if (inExamMode && currentModule) {
             const qMatch = preguntaRegex.exec(line);
             const oMatch = opcionRegex.exec(line);
@@ -436,7 +426,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
               currentModule.examQuestions.push({ question: qText, options: [], correct: 0 });
             }
           }
-          // 5. Capturar el desarrollo teórico directo al TextContent
           else {
             if (currentLesson) {
               currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line;
@@ -588,6 +577,23 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     finally { setUploadingTaskLessonId(null); }
   };
 
+  const handleModuleExamUpload = async (moduleId: string, file: File) => {
+    if (!file) return;
+    setUploadingExamModuleId(moduleId);
+    try {
+      const data = await handleCloudinaryUpload(file, "auto");
+      if (data.secure_url) {
+        setCourseForm((prev: any) => {
+          const nm = [...prev.modules];
+          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
+          if (mIdx > -1) nm[mIdx].examUrl = data.secure_url;
+          return { ...prev, modules: nm };
+        });
+      }
+    } catch (error: any) { alert(`Error al subir el examen: ${error.message}`); } 
+    finally { setUploadingExamModuleId(null); }
+  };
+
   // ==========================================
   // ENVÍO DE TAREAS Y EXAMENES A FIREBASE
   // ==========================================
@@ -616,12 +622,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     } finally { setUploadingStudentFile(null); }
   };
 
+  // ✨ EVALUACIÓN NATIVA EN MODO ENFOQUE ✨
   const evaluateNativeExam = async (mod: any) => {
     const answers = examAnswers[mod.id] || {};
     const safeQuestions = Array.isArray(mod.examQuestions) ? mod.examQuestions : [];
     
     if(Object.keys(answers).length < safeQuestions.length) {
-      return alert("Debes responder todas las preguntas antes de enviar tu examen.");
+      return alert("⚠️ Debes seleccionar una respuesta para todas las preguntas antes de finalizar tu examen.");
     }
     
     let correctCount = 0;
@@ -629,6 +636,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     const score = (correctCount / safeQuestions.length) * 100;
     
     await submitAssessment('module_exam', mod.id, `Examen Módulo: ${mod.title}`, JSON.stringify(answers), undefined, score);
+    
+    // Guardamos la calificación localmente para mostrarla de inmediato y regresamos a la vista normal
+    setCompletedExams(prev => ({...prev, [mod.id]: score}));
+    setViewMode('detail');
   };
 
   const submitRealHomework = async () => {
@@ -953,25 +964,27 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                           {/* PLATAFORMA INTEGRADA: EXAMEN DE MÓDULO */}
                           {mod.examType && mod.examType !== 'none' && (
                             <div className="mt-6 p-6 bg-rose-50/50 border-2 border-rose-100 rounded-2xl shadow-sm">
-                              <div className="flex items-center gap-2 mb-4">
-                                <Award className="w-6 h-6 text-rose-500" />
-                                <h4 className="font-bold text-rose-900 text-lg">Evaluación Final del Módulo</h4>
-                              </div>
                               
                               {safeUser.role === 'student' ? (
                                 <>
                                   {/* SOPORTE PARA EXÁMENES ANTIGUOS CONFIGURADOS COMO ARCHIVO */}
                                   {mod.examType === 'file' && (
-                                    <div className="bg-white p-5 rounded-xl border border-rose-100 flex flex-col gap-4">
-                                      <p className="text-xs text-slate-600 font-medium">Descarga el examen, resuélvelo y sube tu evidencia fotográfica/PDF.</p>
-                                      {mod.examUrl && <a href={mod.examUrl} target="_blank" rel="noreferrer" className="text-xs bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm w-fit"><Download className="w-4 h-4"/> Descargar Examen</a>}
-                                      <div className="border-t border-slate-100 pt-4">
-                                        <input type="file" onChange={e => setStudentFiles({...studentFiles, [mod.id]: e.target.files?.[0]})} className="text-xs block w-full mb-3" />
-                                        <button onClick={() => handleStudentSubmitFileTask(mod.id, `Examen: ${mod.title}`, 'module_exam')} disabled={!studentFiles[mod.id] || uploadingStudentFile === mod.id} className="bg-emerald-600 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50">
-                                          {uploadingStudentFile === mod.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <UploadCloud className="w-4 h-4"/>} Enviar Examen Resuelto
-                                        </button>
+                                    <>
+                                      <div className="flex items-center gap-2 mb-4">
+                                        <Award className="w-6 h-6 text-rose-500" />
+                                        <h4 className="font-bold text-rose-900 text-lg">Evaluación Final del Módulo</h4>
                                       </div>
-                                    </div>
+                                      <div className="bg-white p-5 rounded-xl border border-rose-100 flex flex-col gap-4">
+                                        <p className="text-xs text-slate-600 font-medium">Descarga el examen, resuélvelo y sube tu evidencia fotográfica/PDF.</p>
+                                        {mod.examUrl && <a href={mod.examUrl} target="_blank" rel="noreferrer" className="text-xs bg-slate-900 text-white px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-sm w-fit"><Download className="w-4 h-4"/> Descargar Examen</a>}
+                                        <div className="border-t border-slate-100 pt-4">
+                                          <input type="file" onChange={e => setStudentFiles({...studentFiles, [mod.id]: e.target.files?.[0]})} className="text-xs block w-full mb-3" />
+                                          <button onClick={() => handleStudentSubmitFileTask(mod.id, `Examen: ${mod.title}`, 'module_exam')} disabled={!studentFiles[mod.id] || uploadingStudentFile === mod.id} className="bg-emerald-600 text-white text-xs font-bold px-6 py-2.5 rounded-xl shadow-sm flex items-center gap-2 disabled:opacity-50">
+                                            {uploadingStudentFile === mod.id ? <Loader2 className="w-4 h-4 animate-spin"/> : <UploadCloud className="w-4 h-4"/>} Enviar Examen Resuelto
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </>
                                   )}
 
                                   {mod.examType === 'embed' && mod.examUrl && (
@@ -980,32 +993,44 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                     </div>
                                   )}
 
+                                  {/* ✨ NUEVO: BOTÓN MODO ENFOQUE PARA EXÁMENES NATIVOS ✨ */}
                                   {mod.examType === 'native' && (
-                                    <div className="bg-white p-6 rounded-xl border border-rose-100 space-y-6">
-                                      <p className="text-xs text-rose-600 font-bold mb-4 uppercase tracking-wider">Cuestionario Interactivo</p>
-                                      {Array.isArray(mod.examQuestions) && mod.examQuestions.map((q: any, qIdx: number) => (
-                                        <div key={qIdx} className="space-y-3">
-                                          <p className="font-bold text-sm text-slate-800">{qIdx + 1}. {q.question}</p>
-                                          <div className="space-y-2 pl-2">
-                                            {Array.isArray(q.options) && q.options.map((opt: string, oIdx: number) => (
-                                              <label key={oIdx} className="flex gap-3 items-center text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 cursor-pointer hover:border-emerald-300 transition-colors">
-                                                <input type="radio" name={`exam_${mod.id}_${qIdx}`} className="w-4 h-4 accent-emerald-600" onChange={() => setExamAnswers({...examAnswers, [mod.id]: {...(examAnswers[mod.id] || {}), [qIdx]: oIdx}})} />
-                                                <span className="font-medium">{opt}</span>
-                                              </label>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      ))}
-                                      <div className="pt-4 border-t border-slate-100">
-                                        <button onClick={() => evaluateNativeExam(mod)} className="w-full bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold px-6 py-3.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
-                                          <CheckCircle2 className="w-5 h-5"/> Entregar Examen Definitivo
-                                        </button>
+                                    <div className="bg-white p-8 rounded-xl border border-rose-100 space-y-4 text-center shadow-sm">
+                                      <Award className="w-12 h-12 text-rose-500 mx-auto" />
+                                      <div>
+                                        <h5 className="font-bold text-slate-800 text-lg">Examen de Módulo</h5>
+                                        <p className="text-xs text-slate-500 mt-1">Esta evaluación es interactiva y se calificará automáticamente.</p>
                                       </div>
+                                      
+                                      {completedExams[mod.id] !== undefined ? (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mt-4">
+                                          <p className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Calificación Obtenida</p>
+                                          <p className="text-3xl font-black text-emerald-700">{completedExams[mod.id].toFixed(0)} / 100</p>
+                                        </div>
+                                      ) : (
+                                        <div className="pt-2">
+                                          <button 
+                                            onClick={() => {
+                                              setCurrentExamModule(mod);
+                                              setViewMode('exam');
+                                            }}
+                                            className="w-full sm:w-auto mx-auto bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold px-8 py-3.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                                          >
+                                            <FileText className="w-5 h-5"/> Tomar Examen Ahora
+                                          </button>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </>
                               ) : (
-                                <p className="text-[10px] text-slate-400 bg-white p-3 rounded-lg border border-slate-100 text-center">Configurado como: {mod.examType.toUpperCase()}. Los estudiantes llenarán el examen aquí.</p>
+                                <>
+                                  <div className="flex items-center gap-2 mb-4">
+                                    <Award className="w-6 h-6 text-rose-500" />
+                                    <h4 className="font-bold text-rose-900 text-lg">Evaluación Final del Módulo</h4>
+                                  </div>
+                                  <p className="text-[10px] text-slate-400 bg-white p-3 rounded-lg border border-slate-100 text-center">Configurado como: {mod.examType.toUpperCase()}. Los estudiantes llenarán el examen aquí.</p>
+                                </>
                               )}
                             </div>
                           )}
@@ -1111,7 +1136,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             </div>
           )}
 
-          {/* NUEVO: PESTAÑA EXCLUSIVA DE AUDITORÍA */}
+          {/* PESTAÑA EXCLUSIVA DE AUDITORÍA */}
           {activeSubTab === 'audit' && isAuditor && (
             <div className="bg-white p-6 rounded-2xl border border-indigo-100 shadow-sm space-y-6 animate-in slide-in-from-bottom-2">
               <div className="border-b border-indigo-50 pb-4">
@@ -1528,8 +1553,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                       </div>
                                     ) : (
                                       <div className="flex gap-1.5">
-                                        <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Pega URL o sube archivo..."/>
-                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === `vid_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Pega URL o sube archivo..."/>
+                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors shadow-sm ${uploadingLessonId === `vid_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
                                           {uploadingLessonId === `vid_${lesson.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
                                           <input type="file" accept="video/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]); }} />
                                         </label>
@@ -1594,11 +1619,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             </div>
                           ))}
 
-                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
+                          {/* ✨ CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
                           <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
                             <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
                             
-                            {/* ELIMINADA LA OPCIÓN 'file' DEL DROPDOWN */}
                             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                               <select 
                                 value={mod.examType || 'none'} 
@@ -1617,7 +1641,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               )}
                             </div>
                             
-                            {/* ✨ MAGIA: IMPORTADOR DE PREGUNTAS DESDE WORD AL EXAMEN NATIVO ✨ */}
+                            {/* ✨ IMPORTADOR DE PREGUNTAS DESDE WORD AL EXAMEN NATIVO ✨ */}
                             {mod.examType === 'native' && (
                                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                                   <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
@@ -1672,11 +1696,91 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     );
   };
 
+  // ==========================================
+  // RENDER 4: MODO ENFOQUE (EXAMEN) - NUEVO
+  // ==========================================
+  const renderExamMode = () => {
+    if (!currentExamModule) return null;
+    const mod = currentExamModule;
+    const safeQuestions = Array.isArray(mod.examQuestions) ? mod.examQuestions : [];
+
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in-95 duration-500 pb-20 mt-4">
+        <div className="bg-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-4 z-50">
+          <div>
+            <span className="text-rose-400 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-2">
+              <Award className="w-4 h-4"/> Modo Evaluación (Enfoque)
+            </span>
+            <h2 className="text-xl font-bold font-display mt-1">{mod.title}</h2>
+          </div>
+          <button 
+            onClick={() => {
+              if(window.confirm("¿Seguro que deseas salir? Perderás tu progreso actual en este examen.")) {
+                setViewMode('detail');
+              }
+            }} 
+            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-700 text-slate-300 w-full md:w-auto"
+          >
+            Abandonar Examen
+          </button>
+        </div>
+
+        <div className="bg-white p-6 md:p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
+          <div className="border-b border-slate-100 pb-6 text-center">
+            <h3 className="font-display font-bold text-slate-800 text-2xl">Cuestionario Interactivo</h3>
+            <p className="text-sm text-slate-500 mt-2">Lee cuidadosamente cada opción antes de seleccionar tu respuesta. El sistema calificará tu examen al finalizar.</p>
+          </div>
+
+          <div className="space-y-8">
+            {safeQuestions.map((q: any, qIdx: number) => (
+              <div key={qIdx} className="space-y-4 bg-slate-50 p-6 md:p-8 rounded-2xl border border-slate-100">
+                <p className="font-bold text-base text-slate-900 leading-relaxed flex gap-3">
+                  <span className="text-rose-500 font-black">{qIdx + 1}.</span> 
+                  <span>{q.question}</span>
+                </p>
+                <div className="space-y-3 pl-6 md:pl-8">
+                  {Array.isArray(q.options) && q.options.map((opt: string, oIdx: number) => {
+                    const isSelected = examAnswers[mod.id]?.[qIdx] === oIdx;
+                    return (
+                      <label 
+                        key={oIdx} 
+                        className={`flex gap-4 items-center text-sm p-4 rounded-xl border cursor-pointer transition-all ${isSelected ? 'bg-rose-50 border-rose-300 text-rose-900 shadow-sm ring-1 ring-rose-300' : 'bg-white border-slate-200 text-slate-600 hover:border-rose-200 hover:bg-slate-50/50'}`}
+                      >
+                        <input 
+                          type="radio" 
+                          name={`exam_${mod.id}_${qIdx}`} 
+                          className="w-5 h-5 accent-rose-600 cursor-pointer shrink-0" 
+                          checked={isSelected}
+                          onChange={() => setExamAnswers({...examAnswers, [mod.id]: {...(examAnswers[mod.id] || {}), [qIdx]: oIdx}})} 
+                        />
+                        <span className="font-medium leading-snug">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-8 border-t border-slate-100">
+            <button 
+              onClick={() => evaluateNativeExam(mod)} 
+              className="w-full bg-rose-600 hover:bg-rose-700 text-white text-lg font-bold px-8 py-5 rounded-2xl transition-all shadow-lg shadow-rose-600/20 flex items-center justify-center gap-3"
+            >
+              <CheckCircle2 className="w-7 h-7"/> Finalizar y Calificar Examen
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div id="courses-view-root">
       {viewMode === 'catalog' && renderCatalog()}
       {viewMode === 'studio' && renderStudio()}
       {viewMode === 'detail' && renderCourseDetail()}
+      {viewMode === 'exam' && renderExamMode()}
     </div>
   );
 }
