@@ -7,7 +7,7 @@ import {
   ClipboardCheck, BarChart, ShieldCheck, Search, Lock, Sparkles, CheckCircle2
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, orderBy, onSnapshot } from "firebase/firestore";
 import { Course, UserProfile } from "../types";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -76,6 +76,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [homeworkText, setHomeworkText] = useState("");
   const [submittingHomework, setSubmittingHomework] = useState(false);
 
+  // ✨ NUEVO: ESTADOS DE CONEXIÓN EN TIEMPO REAL CON FIREBASE ✨
+  const [liveCourses, setLiveCourses] = useState<any[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(true);
+
   // Cargar usuarios de Firebase para asignar profesores y matricular alumnos
   useEffect(() => {
     if (isAdmin || safeUser.role === 'teacher') {
@@ -92,6 +96,22 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       fetchUsers();
     }
   }, [safeUser.role, isAdmin]);
+
+  // ✨ NUEVO: ESCUCHADOR EN TIEMPO REAL DE CURSOS ✨
+  useEffect(() => {
+    const q = query(collection(db, "courses"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedCourses: any[] = [];
+      snapshot.forEach(doc => fetchedCourses.push({ id: doc.id, ...doc.data() }));
+      setLiveCourses(fetchedCourses);
+      setLoadingCourses(false);
+    }, (error) => {
+      console.error("Error cargando cursos desde la nube:", error);
+      setLoadingCourses(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // ==========================================
   // FUNCIONES DEL CONSTRUCTOR (DATOS REALES)
@@ -124,11 +144,15 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }
     setIsSaving(true);
     try {
-      if (courseForm.id) {
+      // Evitamos errores si el usuario intenta guardar un curso de prueba que no existe en DB
+      const isMockCourse = courseForm.id && String(courseForm.id).length < 10;
+
+      if (courseForm.id && !isMockCourse) {
         await updateDoc(doc(db, "courses", courseForm.id), courseForm);
       } else {
+        const { id, ...dataToSave } = courseForm; // Quitamos cualquier ID falso
         await addDoc(collection(db, "courses"), {
-          ...courseForm,
+          ...dataToSave,
           progress: 0,
           studentsCount: Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents.length : 0,
           createdAt: serverTimestamp()
@@ -200,7 +224,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (ACTUALIZADO)
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (V 2.0 INTELIGENTE)
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -222,24 +246,31 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         const text = result.value;
 
         if (!text || text.trim() === '') {
-          alert("El documento parece estar vacío o protegido.");
+          alert("El documento parece estar vacío o es un archivo incompatible (Ej. imagen dentro de un Word).");
           setIsGeneratingAI(false);
           return;
         }
 
-        const lines = text.split('\n').filter(l => l.trim() !== '');
+        // Dividimos por saltos de línea y limpiamos vacíos (Cross-platform \r\n y \n)
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
         const newModules: any[] = [];
         let currentModule: any = null;
         let currentLesson: any = null;
 
+        // ✨ EXPRESIONES REGULARES INTELIGENTES ✨
+        // Atrapan cosas como: "Módulo 1", " 1. Unidad", " Tema 2", "Subtema:", "Examen Teórico", etc.
+        const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s*\d*/i;
+        const temaRegex = /^\s*(?:tema|lección|leccion|clase|subtema)\s*\d*/i;
+        const examenRegex = /examen|evaluación|prueba final/i;
+
         lines.forEach(line => {
-          const lowerLine = line.trim().toLowerCase();
+          const lowerLine = line.toLowerCase();
 
           // 1. Detectar Módulo Nuevo
-          if (lowerLine.startsWith('módulo') || lowerLine.startsWith('modulo') || lowerLine.startsWith('unidad')) {
+          if (moduloRegex.test(lowerLine)) {
             currentModule = {
               id: `mod_${Date.now()}_${Math.random()}`,
-              title: line.trim().substring(0, 150), 
+              title: line.substring(0, 150), 
               description: "",
               examType: 'none',
               examUrl: "",
@@ -250,13 +281,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             currentLesson = null;
           } 
           // 2. Detectar Examen (Activa el Examen Nativo Automáticamente)
-          else if (lowerLine.includes('examen de tema') || lowerLine.includes('examen teórico') || lowerLine.includes('evaluación final')) {
+          else if (examenRegex.test(lowerLine)) {
             if (currentModule) {
-              currentModule.examType = 'native'; // Deja el cuestionario interactivo listo para usar
+              currentModule.examType = 'native'; 
             }
           }
           // 3. Detectar Tema Nuevo
-          else if (lowerLine.startsWith('tema') || lowerLine.startsWith('lección') || lowerLine.startsWith('leccion') || lowerLine.startsWith('clase')) {
+          else if (temaRegex.test(lowerLine)) {
             if (!currentModule) {
               currentModule = {
                 id: `mod_default_${Date.now()}`,
@@ -271,7 +302,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             }
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
-              title: line.trim().substring(0, 150),
+              title: line.substring(0, 150),
               type: 'video', // Valor por defecto
               contentUrl: "",
               videoUrl: "",
@@ -286,25 +317,26 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           else {
             if (currentLesson) {
               // Agrega saltos de línea para que los párrafos se vean ordenados
-              currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line.trim();
-            } else if (currentModule && currentModule.description.length < 200) {
-              currentModule.description += " " + line.trim();
+              currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line;
+            } else if (currentModule && currentModule.description.length < 300) {
+              currentModule.description += (currentModule.description ? " " : "") + line;
             }
           }
         });
 
+        // 5. Fallback por si el documento no tiene palabras clave reconocibles
         if (newModules.length === 0) {
           newModules.push({
             id: `mod_fallback_${Date.now()}`,
-            title: "Módulo Generado desde Documento",
-            description: "Se ha extraído todo el contenido.",
+            title: "Desarrollo Teórico Generado",
+            description: "El sistema estructuró todo el contenido en este módulo principal.",
             examType: 'none',
             examUrl: "",
             examQuestions: [],
             lessons: [
               {
                 id: `les_fallback_${Date.now()}`,
-                title: "Desarrollo Completo del Documento",
+                title: "Contenido del Manual",
                 type: 'video',
                 contentUrl: "",
                 videoUrl: "",
@@ -317,10 +349,23 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           });
         }
 
-        setCourseForm((prev: any) => ({
-          ...prev,
-          modules: [...(prev.modules || []), ...newModules]
-        }));
+        // ✨ MAGIA: Reemplazar el curso vacío en lugar de agregarlo al fondo ✨
+        setCourseForm((prev: any) => {
+          const currentMods = prev.modules || [];
+          // Verificamos si el curso está prácticamente vacío
+          const isEmptyCourse = currentMods.length === 0 || 
+                               (currentMods.length === 1 && currentMods[0].lessons.length === 0);
+          
+          return {
+            ...prev,
+            modules: isEmptyCourse ? newModules : [...currentMods, ...newModules]
+          };
+        });
+
+        // ✨ ABRIMOS EL PRIMER MÓDULO AUTOMÁTICAMENTE PARA QUE LO VEAS ✨
+        if (newModules.length > 0) {
+          setExpandedModule(newModules[0].id);
+        }
 
         alert("¡Malla Curricular generada y desarrollo teórico inyectado correctamente!");
       } catch (error) {
@@ -443,7 +488,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // ENVÍO DE TAREAS Y EXAMENES (ESTUDIANTES) A FIREBASE
+  // ENVÍO DE TAREAS Y EXAMENES A FIREBASE
   // ==========================================
   const submitAssessment = async (type: 'lesson_task' | 'module_exam', itemId: string, itemTitle: string, content: any, fileUrl?: string, score?: number) => {
     try {
@@ -485,9 +530,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     await submitAssessment('module_exam', mod.id, `Examen Módulo: ${mod.title}`, JSON.stringify(answers), undefined, score);
   };
 
-  // ==========================================
-  // ENVÍO DE TAREAS VIEJO (BUZÓN GENERAL)
-  // ==========================================
   const submitRealHomework = async () => {
     if (homeworkText.trim().length < 10) {
       alert("Tu entrega es muy corta. Por favor, elabora tu respuesta o pega un enlace válido.");
@@ -538,9 +580,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   // RENDER 1: CATÁLOGO DE CURSOS Y AUDITORÍA
   // ==========================================
   const renderCatalog = () => {
-    const safeCourses = Array.isArray(courses) ? courses : [];
+    const safeCourses = liveCourses; 
     
-    // 🔒 FILTRO ESTRICTO DE VISIBILIDAD DE CURSOS
     const displayCourses = (isAdmin || isAuditor) 
       ? safeCourses 
       : safeCourses.filter((c: any) => {
@@ -572,11 +613,16 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           )}
         </div>
 
-        {displayCourses.length === 0 ? (
+        {loadingCourses ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400 bg-white rounded-3xl border border-slate-100 shadow-sm">
+            <Loader2 className="w-10 h-10 animate-spin mb-4 text-emerald-500" />
+            <p className="text-sm font-bold">Cargando catálogo desde la nube...</p>
+          </div>
+        ) : displayCourses.length === 0 ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
             {isAuditor ? <ShieldCheck className="w-16 h-16 text-indigo-200 mx-auto mb-4" /> : <BookOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />}
             <h3 className="text-lg font-bold text-slate-700">No hay programas disponibles</h3>
-            <p className="text-sm text-slate-500 mt-2">No tienes cursos asignados o la base de datos está limpia.</p>
+            <p className="text-sm text-slate-500 mt-2">Crea tu primer curso real para que aparezca aquí.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -747,14 +793,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                       <BookOpen className="w-4 h-4 text-emerald-600"/>
                                     </div>
                                     <span className="font-bold text-slate-800 text-sm">{lesson.title}</span>
-                                  </div>
-                                  
-                                  <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                                    {lesson.contentUrl && (
-                                      <a href={lesson.contentUrl} target="_blank" rel="noreferrer" className="text-[10px] bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-200 transition-colors flex items-center gap-1.5 border border-slate-200">
-                                        <FileText className="w-3 h-3"/> Material Escrito
-                                      </a>
-                                    )}
                                   </div>
                                 </div>
 
