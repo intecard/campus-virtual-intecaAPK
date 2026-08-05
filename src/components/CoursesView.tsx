@@ -58,6 +58,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [uploadingExamModuleId, setUploadingExamModuleId] = useState<string | null>(null);
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   
+  // ✨ NUEVO: ESTADO PARA LA GENERACIÓN EXCLUSIVA DE EXÁMENES
+  const [isGeneratingExamIndex, setIsGeneratingExamIndex] = useState<number | null>(null);
+  
   // MEMORIA DE ESTUDIANTES PARA EXÁMENES Y TAREAS NATIVAS
   const [studentAnswers, setStudentAnswers] = useState<Record<string, string>>({}); 
   const [studentFiles, setStudentFiles] = useState<Record<string, File | null>>({}); 
@@ -247,6 +250,84 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
+  // IA: EXTRACCIÓN Y GENERACIÓN MÁGICA EXCLUSIVA PARA EXÁMENES NATIVOS
+  // ==========================================
+  const handleExamAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>, mIndex: number) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.docx')) {
+      alert("❌ Formato Inválido: Sube un archivo de Word (.docx) con tu examen.");
+      e.target.value = '';
+      return;
+    }
+
+    setIsGeneratingExamIndex(mIndex);
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const arrayBuffer = event.target?.result as ArrayBuffer;
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        const text = result.value;
+
+        if (!text || text.trim() === '') {
+          alert("El documento parece estar vacío o protegido.");
+          setIsGeneratingExamIndex(null);
+          return;
+        }
+
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+        const newQuestions: any[] = [];
+        
+        // Identificadores de preguntas (Ej. "1. ¿Qué es?") y opciones (Ej. "a) Respuesta")
+        const preguntaRegex = /^\s*\d+[\.\-\)]\s*(.+)/;
+        const opcionRegex = /^\s*[a-e][\.\-\)]\s*(.+)/i;
+
+        lines.forEach(line => {
+          const qMatch = preguntaRegex.exec(line);
+          const oMatch = opcionRegex.exec(line);
+          
+          if (oMatch) {
+            if (newQuestions.length > 0) {
+              newQuestions[newQuestions.length - 1].options.push(oMatch[1]);
+            }
+          } else if (qMatch || line.endsWith('?')) {
+            const qText = qMatch ? qMatch[1] : line;
+            newQuestions.push({ question: qText, options: [], correct: 0 }); // Por defecto asume la A (0)
+          }
+        });
+
+        if (newQuestions.length === 0) {
+          alert("No se detectaron preguntas válidas. Asegúrate de enumerarlas (Ej. '1. Pregunta') y usar letras para opciones (Ej. 'a) Opción').");
+        } else {
+          setCourseForm((prev: any) => {
+            const nm = [...prev.modules];
+            if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
+            nm[mIndex].examQuestions = [...nm[mIndex].examQuestions, ...newQuestions];
+            return { ...prev, modules: nm };
+          });
+          alert(`¡Magia pura! Se crearon ${newQuestions.length} preguntas interactivas automáticamente.`);
+        }
+      } catch (error) {
+        console.error("Error extrayendo el examen Word:", error);
+        alert("Ocurrió un error procesando el examen.");
+      } finally {
+        setIsGeneratingExamIndex(null);
+        e.target.value = ''; 
+      }
+    };
+
+    reader.onerror = () => {
+      alert("El navegador bloqueó la lectura del archivo.");
+      setIsGeneratingExamIndex(null);
+      e.target.value = '';
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ==========================================
   // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (V 3.0 ESTRICTO)
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,17 +360,21 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         const newModules: any[] = [];
         let currentModule: any = null;
         let currentLesson: any = null;
+        let inExamMode = false; // Bandera para saber si el parser está leyendo el examen final
 
-        // ✨ REGEX SUPER ESTRICTAS: Obligatorio que tengan un NÚMERO ✨
+        // ✨ REGEX SUPER ESTRICTAS ✨
         const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s+\d+/i;
         const temaRegex = /^\s*(?:tema|lección|leccion|clase)\s+\d+/i;
-        const examenRegex = /^\s*(?:examen|evaluación final|prueba final)/i;
+        const examenRegex = /^\s*(?:examen|evaluación|prueba final)/i;
+        const preguntaRegex = /^\s*\d+[\.\-\)]\s*(.+)/;
+        const opcionRegex = /^\s*[a-e][\.\-\)]\s*(.+)/i;
 
         lines.forEach(line => {
           const lowerLine = line.toLowerCase();
 
-          // 1. Detectar Módulo Nuevo (Ej. Módulo 1, Unidad 2)
+          // 1. Detectar Módulo Nuevo
           if (moduloRegex.test(lowerLine)) {
+            inExamMode = false;
             currentModule = {
               id: `mod_${Date.now()}_${Math.random()}`,
               title: line.substring(0, 150), 
@@ -302,14 +387,17 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             newModules.push(currentModule);
             currentLesson = null;
           } 
-          // 2. Detectar Examen (Activa el Examen Nativo al final del Módulo actual)
+          // 2. Detectar Examen Nativo
           else if (examenRegex.test(lowerLine) || lowerLine.includes('examen de tema')) {
             if (currentModule) {
               currentModule.examType = 'native'; 
+              if(!currentModule.examQuestions) currentModule.examQuestions = [];
+              inExamMode = true;
             }
           }
-          // 3. Detectar Tema Nuevo (Ej. Tema 1, Lección 2)
+          // 3. Detectar Tema Nuevo
           else if (temaRegex.test(lowerLine)) {
+            inExamMode = false;
             if (!currentModule) {
               currentModule = {
                 id: `mod_default_${Date.now()}`,
@@ -325,20 +413,32 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
               title: line.substring(0, 150),
-              type: 'video', // Valor por defecto
+              type: 'video', 
               contentUrl: "",
               videoUrl: "",
-              textContent: "", // AQUÍ GUARDAMOS LA TEORÍA DIRECTAMENTE
+              textContent: "", 
               taskType: 'none', 
               taskDescription: "",
               taskUrl: ""
             };
             currentModule.lessons.push(currentLesson);
           } 
-          // 4. Capturar el desarrollo teórico directo al TextContent
+          // 4. Leer preguntas del examen (Si estamos en el bloque de examen)
+          else if (inExamMode && currentModule) {
+            const qMatch = preguntaRegex.exec(line);
+            const oMatch = opcionRegex.exec(line);
+            
+            if (oMatch) {
+              const lastQ = currentModule.examQuestions[currentModule.examQuestions.length - 1];
+              if (lastQ) lastQ.options.push(oMatch[1]);
+            } else if (qMatch || line.endsWith('?')) {
+              const qText = qMatch ? qMatch[1] : line;
+              currentModule.examQuestions.push({ question: qText, options: [], correct: 0 });
+            }
+          }
+          // 5. Capturar el desarrollo teórico directo al TextContent
           else {
             if (currentLesson) {
-              // Agrega saltos de línea para que los párrafos se vean ordenados
               currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line;
             } else if (currentModule && currentModule.description.length < 300) {
               currentModule.description += (currentModule.description ? " " : "") + line;
@@ -346,7 +446,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           }
         });
 
-        // 5. Fallback por si el documento no tiene palabras clave reconocibles
         if (newModules.length === 0) {
           newModules.push({
             id: `mod_fallback_${Date.now()}`,
@@ -406,7 +505,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // CLOUDINARY: SUBIDAS (GENERAL, VIDEO, EXAMEN Y TAREA)
+  // CLOUDINARY: SUBIDAS (GENERAL Y VIDEO)
   // ==========================================
   const handleCloudinaryUpload = async (file: File, endpoint: string) => {
     const formData = new FormData();
@@ -487,23 +586,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       }
     } catch (error: any) { alert(`Error al subir la tarea: ${error.message}`); } 
     finally { setUploadingTaskLessonId(null); }
-  };
-
-  const handleModuleExamUpload = async (moduleId: string, file: File) => {
-    if (!file) return;
-    setUploadingExamModuleId(moduleId);
-    try {
-      const data = await handleCloudinaryUpload(file, "auto");
-      if (data.secure_url) {
-        setCourseForm((prev: any) => {
-          const nm = [...prev.modules];
-          const mIdx = nm.findIndex((m: any) => m.id === moduleId);
-          if (mIdx > -1) nm[mIdx].examUrl = data.secure_url;
-          return { ...prev, modules: nm };
-        });
-      }
-    } catch (error: any) { alert(`Error al subir el examen: ${error.message}`); } 
-    finally { setUploadingExamModuleId(null); }
   };
 
   // ==========================================
@@ -878,6 +960,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               
                               {safeUser.role === 'student' ? (
                                 <>
+                                  {/* SOPORTE PARA EXÁMENES ANTIGUOS CONFIGURADOS COMO ARCHIVO */}
                                   {mod.examType === 'file' && (
                                     <div className="bg-white p-5 rounded-xl border border-rose-100 flex flex-col gap-4">
                                       <p className="text-xs text-slate-600 font-medium">Descarga el examen, resuélvelo y sube tu evidencia fotográfica/PDF.</p>
@@ -1497,7 +1580,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 </div>
                               </div>
 
-                              {/* ✨ CAJA DE DESARROLLO TEÓRICO (DONDE EL MOTOR PEGA EL TEXTO) ✨ */}
+                              {/* ✨ CAJA DE DESARROLLO TEÓRICO ✨ */}
                               <div className="mt-3">
                                 <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Desarrollo Teórico / Contenido del Tema</label>
                                 <textarea 
@@ -1511,56 +1594,58 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             </div>
                           ))}
 
-                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO (MOVIDO AL FINAL) ✨ */}
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
                           <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
                             <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
+                            
+                            {/* ELIMINADA LA OPCIÓN 'file' DEL DROPDOWN */}
                             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
                               <select 
                                 value={mod.examType || 'none'} 
                                 onChange={(e) => { const newMods = [...safeFormModules]; newMods[mIndex].examType = e.target.value; setCourseForm({...courseForm, modules: newMods}); }}
-                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-lg p-2 text-xs outline-none focus:border-rose-500 w-full sm:w-auto"
+                                className="bg-slate-50 border border-slate-200 text-slate-600 rounded-lg p-2 text-xs outline-none focus:border-rose-500 w-full sm:w-auto font-bold"
                               >
                                 <option value="none">Sin Examen Final</option>
-                                <option value="file">Examen para Descargar/Subir (Manuscrito)</option>
-                                <option value="embed">Formulario Google / Microsoft Forms</option>
-                                <option value="native">Cuestionario Interactivo Nativo</option>
+                                <option value="embed">Formulario Externo (Google / Forms)</option>
+                                <option value="native">Cuestionario en Plataforma (Autocalificable)</option>
                               </select>
 
-                              {(mod.examType === 'file' || mod.examType === 'embed') && (
+                              {mod.examType === 'embed' && (
                                 <div className="flex-1 w-full flex gap-1.5">
-                                  <input type="text" value={mod.examUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].examUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs w-full outline-none focus:border-rose-500" placeholder="Ej. Link de Google Forms o sube archivo..."/>
-                                  {mod.examType === 'file' && (
-                                    <label className={`bg-slate-900 hover:bg-black text-white px-3 rounded-lg cursor-pointer flex items-center justify-center transition-colors shadow-sm ${uploadingExamModuleId === mod.id ? 'opacity-50 pointer-events-none' : ''}`} title="Subir archivo a Cloudinary">
-                                      {uploadingExamModuleId === mod.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-                                      <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleModuleExamUpload(mod.id, e.target.files[0]); }} />
-                                    </label>
-                                  )}
+                                  <input type="text" value={mod.examUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].examUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs w-full outline-none focus:border-rose-500" placeholder="Ej. Link de Google Forms o Microsoft Forms..."/>
                                 </div>
                               )}
                             </div>
                             
-                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
+                            {/* ✨ MAGIA: IMPORTADOR DE PREGUNTAS DESDE WORD AL EXAMEN NATIVO ✨ */}
                             {mod.examType === 'native' && (
                                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                                  <div className="flex justify-between items-center">
+                                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Preguntas del Cuestionario</span>
-                                     <button onClick={() => {
-                                        const nm = [...safeFormModules];
-                                        if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
-                                        nm[mIndex].examQuestions.push({ question: "", options: ["", ""], correct: 0 });
-                                        setCourseForm({...courseForm, modules: nm});
-                                     }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Pregunta</button>
+                                     <div className="flex flex-wrap gap-2">
+                                       <label className={`text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-600 px-3 py-1.5 rounded-lg font-bold hover:bg-indigo-100 shadow-sm cursor-pointer flex items-center gap-1.5 transition-colors ${isGeneratingExamIndex === mIndex ? 'opacity-50 pointer-events-none' : ''}`} title="Sube el Word con tu examen y el sistema extraerá las preguntas">
+                                         {isGeneratingExamIndex === mIndex ? <Loader2 className="w-3 h-3 animate-spin"/> : <Sparkles className="w-3 h-3"/>}
+                                         {isGeneratingExamIndex === mIndex ? 'Extrayendo...' : 'Importar de Word'}
+                                         <input type="file" accept=".docx" className="hidden" onChange={(e) => handleExamAIGeneration(e, mIndex)} disabled={isGeneratingExamIndex === mIndex} />
+                                       </label>
+                                       <button onClick={() => {
+                                          const nm = [...safeFormModules];
+                                          if(!nm[mIndex].examQuestions) nm[mIndex].examQuestions = [];
+                                          nm[mIndex].examQuestions.push({ question: "", options: ["", ""], correct: 0 });
+                                          setCourseForm({...courseForm, modules: nm});
+                                       }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Manual</button>
+                                     </div>
                                   </div>
-                                  {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas.</p> : (
+                                  {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas. Usa "Importar de Word" o escríbelas manual.</p> : (
                                      mod.examQuestions.map((q: any, qIdx: number) => (
-                                        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative">
+                                        <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative shadow-sm">
                                            <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions.splice(qIdx, 1); setCourseForm({...courseForm, modules: nm}); }} className="absolute top-2 right-2 text-rose-500 hover:bg-rose-50 p-1 rounded"><X className="w-3 h-3"/></button>
-                                           <input type="text" placeholder={`Pregunta ${qIdx + 1}...`} value={q.question} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].question = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="w-11/12 text-xs font-bold bg-transparent border-b border-slate-300 focus:border-rose-500 outline-none mb-3 pb-1"/>
+                                           <input type="text" placeholder={`Pregunta ${qIdx + 1}...`} value={q.question} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].question = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="w-11/12 text-xs font-bold text-slate-800 bg-transparent border-b border-slate-300 focus:border-rose-500 outline-none mb-3 pb-1"/>
                                            <div className="space-y-2 pl-2">
                                               {q.options.map((opt: string, oIdx: number) => (
                                                  <div key={oIdx} className="flex items-center gap-2">
                                                     <input type="radio" className="accent-rose-500" checked={q.correct === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
-                                                    <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500" placeholder={`Opción ${oIdx + 1}`}/>
+                                                    <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500 text-slate-600" placeholder={`Opción ${oIdx + 1}`}/>
                                                     {q.options.length > 2 && <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.splice(oIdx, 1); if(q.correct>=oIdx && q.correct>0) nm[mIndex].examQuestions[qIdx].correct--; setCourseForm({...courseForm, modules: nm}); }}><Trash2 className="w-3 h-3 text-slate-400 hover:text-rose-500"/></button>}
                                                  </div>
                                               ))}
