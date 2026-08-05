@@ -7,7 +7,7 @@ import {
   ClipboardCheck, BarChart, ShieldCheck, Search, Lock, Sparkles, CheckCircle2
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, orderBy, onSnapshot } from "firebase/firestore";
 import { Course, UserProfile } from "../types";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -36,8 +36,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const isAdmin = currentRole === 'admin' || isMaster;
   const isAuditor = currentRole === 'observer' || currentRole === 'auditor';
 
-  // ✨ ESTADOS DE NAVEGACIÓN Y VISTAS (NUEVO MODO: 'exam')
-  const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio' | 'exam'>('catalog');
+  // ✨ ESTADOS DE NAVEGACIÓN Y VISTAS (MODOS NUEVOS: 'exam' y 'review_exam')
+  const [viewMode, setViewMode] = useState<'catalog' | 'detail' | 'studio' | 'exam' | 'review_exam'>('catalog');
   const [selectedCourse, setSelectedCourse] = useState<any>(null);
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
   const [activeSubTab, setActiveSubTab] = useState<'content' | 'homework' | 'lti' | 'audit'>('content');
@@ -61,9 +61,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   // ESTADO PARA LA GENERACIÓN EXCLUSIVA DE EXÁMENES
   const [isGeneratingExamIndex, setIsGeneratingExamIndex] = useState<number | null>(null);
   
-  // ✨ MEMORIA DE ESTUDIANTES PARA EXÁMENES (Modo Enfoque) ✨
+  // ✨ MEMORIA DE ESTUDIANTES PARA EXÁMENES (Modo Enfoque y Revisión) ✨
   const [currentExamModule, setCurrentExamModule] = useState<any>(null);
-  const [completedExams, setCompletedExams] = useState<Record<string, number>>({});
+  // Almacena un objeto con {score: number, answers: Record<string, number>}
+  const [completedExams, setCompletedExams] = useState<Record<string, any>>({});
   const [studentAnswers, setStudentAnswers] = useState<Record<string, string>>({}); 
   const [studentFiles, setStudentFiles] = useState<Record<string, File | null>>({}); 
   const [uploadingStudentFile, setUploadingStudentFile] = useState<string | null>(null);
@@ -101,6 +102,28 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       fetchUsers();
     }
   }, [safeUser.role, isAdmin]);
+
+  // ✨ NUEVO: CARGAR HISTORIAL DE EXÁMENES TOMADOS POR EL ESTUDIANTE ✨
+  useEffect(() => {
+    if (safeUser.id) {
+      const q = query(collection(db, "homework_submissions"));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const exams: Record<string, any> = {};
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          // Solo agarramos los examenes finales hechos por ESTE estudiante
+          if (data.studentId === safeUser.id && data.type === 'module_exam') {
+            exams[data.assessmentId] = {
+              score: data.score || 0,
+              answers: data.content ? JSON.parse(data.content) : {}
+            };
+          }
+        });
+        setCompletedExams(exams);
+      });
+      return () => unsubscribe();
+    }
+  }, [safeUser.id]);
 
   // ESCUCHADOR EN TIEMPO REAL DE CURSOS
   useEffect(() => {
@@ -246,9 +269,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }));
   };
 
-  // ==========================================
-  // IA: EXTRACCIÓN Y GENERACIÓN MÁGICA EXCLUSIVA PARA EXÁMENES NATIVOS
-  // ==========================================
   const handleExamAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>, mIndex: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -323,9 +343,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     reader.readAsArrayBuffer(file);
   };
 
-  // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
-  // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -606,7 +623,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         type, content, fileUrl: fileUrl || "", score: score !== undefined ? score : null,
         submittedAt: serverTimestamp(), status: 'pending' 
       });
-      alert(type === 'module_exam' ? `¡Examen completado! Tu calificación es ${score?.toFixed(0)}/100` : "¡Evaluación entregada exitosamente!");
+      alert(type === 'module_exam' ? `¡Examen completado y enviado!` : "¡Evaluación entregada exitosamente!");
     } catch (err) { alert("Error de conexión al enviar."); }
   };
 
@@ -622,7 +639,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     } finally { setUploadingStudentFile(null); }
   };
 
-  // ✨ EVALUACIÓN NATIVA EN MODO ENFOQUE ✨
+  // ✨ EVALUACIÓN NATIVA EN MODO ENFOQUE (Corregida con Matemática Exacta) ✨
   const evaluateNativeExam = async (mod: any) => {
     const answers = examAnswers[mod.id] || {};
     const safeQuestions = Array.isArray(mod.examQuestions) ? mod.examQuestions : [];
@@ -632,13 +649,19 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }
     
     let correctCount = 0;
-    safeQuestions.forEach((q: any, idx: number) => { if(answers[idx] === q.correct) correctCount++; });
-    const score = (correctCount / safeQuestions.length) * 100;
+    safeQuestions.forEach((q: any, idx: number) => { 
+      // Blindado con Number() para asegurar comparación matemática correcta
+      if(Number(answers[idx]) === Number(q.correct)) correctCount++; 
+    });
+    
+    // Cálculo de porcentaje garantizado (Evitamos divisiones raras o decimales largos)
+    const totalQuestions = Math.max(safeQuestions.length, 1);
+    const score = Math.round((correctCount / totalQuestions) * 100);
     
     await submitAssessment('module_exam', mod.id, `Examen Módulo: ${mod.title}`, JSON.stringify(answers), undefined, score);
     
-    // Guardamos la calificación localmente para mostrarla de inmediato y regresamos a la vista normal
-    setCompletedExams(prev => ({...prev, [mod.id]: score}));
+    // Guardamos la calificación localmente (ahora como objeto) para mostrarla de inmediato y regresamos a la vista normal
+    setCompletedExams(prev => ({...prev, [mod.id]: { score, answers }}));
     setViewMode('detail');
   };
 
@@ -1002,10 +1025,22 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                         <p className="text-xs text-slate-500 mt-1">Esta evaluación es interactiva y se calificará automáticamente.</p>
                                       </div>
                                       
+                                      {/* Si el examen ya está en la memoria del estudiante (Firebase) */}
                                       {completedExams[mod.id] !== undefined ? (
-                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mt-4">
-                                          <p className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Calificación Obtenida</p>
-                                          <p className="text-3xl font-black text-emerald-700">{completedExams[mod.id].toFixed(0)} / 100</p>
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mt-4 space-y-4">
+                                          <div>
+                                            <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Calificación Obtenida</p>
+                                            <p className="text-4xl font-black text-emerald-700">{completedExams[mod.id].score} / 100</p>
+                                          </div>
+                                          <button 
+                                            onClick={() => {
+                                              setCurrentExamModule(mod);
+                                              setViewMode('review_exam');
+                                            }}
+                                            className="w-full sm:w-auto mx-auto bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-8 py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                                          >
+                                            <CheckCircle2 className="w-5 h-5"/> Ver Corrección del Examen
+                                          </button>
                                         </div>
                                       ) : (
                                         <div className="pt-2">
@@ -1553,8 +1588,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                       </div>
                                     ) : (
                                       <div className="flex gap-1.5">
-                                        <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-white border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Pega URL o sube archivo..."/>
-                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors shadow-sm ${uploadingLessonId === `vid_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
+                                        <input type="text" value={lesson.videoUrl || ""} onChange={(e) => { const nm = [...safeFormModules]; nm[mIndex].lessons[lIndex].videoUrl = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="bg-slate-50 border border-slate-200 rounded-md p-2 text-[10px] w-full outline-none focus:border-sky-500" placeholder="Pega URL o sube archivo..."/>
+                                        <label className={`bg-slate-900 hover:bg-black text-white px-2.5 rounded-md cursor-pointer flex items-center transition-colors ${uploadingLessonId === `vid_${lesson.id}` ? 'opacity-50 pointer-events-none' : ''}`}>
                                           {uploadingLessonId === `vid_${lesson.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <UploadCloud className="w-3 h-3" />}
                                           <input type="file" accept="video/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleLessonVideoUpload(mod.id, lesson.id, e.target.files[0]); }} />
                                         </label>
@@ -1619,7 +1654,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             </div>
                           ))}
 
-                          {/* ✨ CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
                           <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
                             <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
                             
@@ -1775,12 +1810,86 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     );
   };
 
+  // ==========================================
+  // RENDER 5: MODO REVISIÓN DE EXAMEN - NUEVO
+  // ==========================================
+  const renderReviewExamMode = () => {
+    if (!currentExamModule) return null;
+    const mod = currentExamModule;
+    const safeQuestions = Array.isArray(mod.examQuestions) ? mod.examQuestions : [];
+    
+    // Extraemos la información del examen guardado localmente (sincronizado con Firebase)
+    const submission = completedExams[mod.id] || { score: 0, answers: {} };
+
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in-95 duration-500 pb-20 mt-4">
+        <div className="bg-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-4 z-50">
+          <div>
+            <span className="text-emerald-400 text-[10px] font-mono font-bold uppercase tracking-wider flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4"/> Revisión de Examen
+            </span>
+            <h2 className="text-xl font-bold font-display mt-1">{mod.title}</h2>
+          </div>
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="bg-slate-800 px-4 py-2 rounded-xl text-center border border-slate-700 flex-1 md:flex-none">
+              <span className="block text-[10px] text-slate-400 font-bold uppercase">Calificación</span>
+              <span className="text-lg font-black text-emerald-400">{submission.score.toFixed(0)} / 100</span>
+            </div>
+            <button 
+              onClick={() => setViewMode('detail')} 
+              className="px-4 py-2 h-full bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold transition-all border border-slate-700 text-slate-300"
+            >
+              Volver al Curso
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 md:p-10 rounded-3xl border border-slate-100 shadow-sm space-y-8">
+          {safeQuestions.map((q: any, qIdx: number) => {
+            const studentAnswer = submission.answers[qIdx];
+            const isCorrect = Number(studentAnswer) === Number(q.correct);
+
+            return (
+              <div key={qIdx} className={`space-y-4 p-6 md:p-8 rounded-2xl border ${isCorrect ? 'bg-emerald-50/30 border-emerald-100' : 'bg-rose-50/30 border-rose-100'}`}>
+                <p className="font-bold text-base text-slate-900 leading-relaxed flex gap-3">
+                  <span className={isCorrect ? 'text-emerald-600 font-black' : 'text-rose-600 font-black'}>{qIdx + 1}.</span> 
+                  <span>{q.question}</span>
+                </p>
+                <div className="space-y-3 pl-6 md:pl-8">
+                  {Array.isArray(q.options) && q.options.map((opt: string, oIdx: number) => {
+                    const isSelectedByStudent = Number(studentAnswer) === oIdx;
+                    const isTheCorrectAnswer = Number(q.correct) === oIdx;
+                    
+                    let optClass = "bg-white border-slate-200 text-slate-500 opacity-60";
+                    if (isTheCorrectAnswer) {
+                      optClass = "bg-emerald-100 border-emerald-300 text-emerald-900 font-bold ring-1 ring-emerald-300 opacity-100";
+                    } else if (isSelectedByStudent && !isTheCorrectAnswer) {
+                      optClass = "bg-rose-100 border-rose-300 text-rose-900 font-bold line-through ring-1 ring-rose-300 opacity-100";
+                    }
+
+                    return (
+                      <label key={oIdx} className={`flex gap-4 items-center text-sm p-4 rounded-xl border transition-all ${optClass}`}>
+                        <input type="radio" disabled checked={isSelectedByStudent} className="w-5 h-5 shrink-0" />
+                        <span className="leading-snug">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div id="courses-view-root">
       {viewMode === 'catalog' && renderCatalog()}
       {viewMode === 'studio' && renderStudio()}
       {viewMode === 'detail' && renderCourseDetail()}
       {viewMode === 'exam' && renderExamMode()}
+      {viewMode === 'review_exam' && renderReviewExamMode()}
     </div>
   );
 }
