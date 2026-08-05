@@ -136,9 +136,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         modules: Array.isArray(courseToEdit.modules) ? courseToEdit.modules : []
       });
     } else {
+      // ✨ AUTO-ASIGNACIÓN DE PROFESOR SI EL USUARIO ES TEACHER ✨
+      const defaultTeacherId = safeUser.role === 'teacher' ? safeUser.id : "";
+      const defaultTeacherName = safeUser.role === 'teacher' ? safeUser.name : "";
+
       setCourseForm({
         title: "", code: "INT-", category: "", description: "", duration: "4 semanas", 
-        level: "Técnico", teacher: "", teacherId: "", image: "", 
+        level: "Técnico", teacher: defaultTeacherName, teacherId: defaultTeacherId, image: "", 
         format: "native", contentUrl: "", enrolledStudents: [], modules: []
       });
     }
@@ -217,7 +221,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const toggleStudentEnrollment = (studentId: string) => {
-    if (!isAdmin) return;
+    // ✨ PERMISOS RESTRINGIDOS: Solo Administradores pueden matricular ✨
+    if (!isAdmin) return; 
+    
     const safeStudents = Array.isArray(courseForm.enrolledStudents) ? courseForm.enrolledStudents : [];
     const isEnrolled = safeStudents.includes(studentId);
     if (isEnrolled) {
@@ -275,7 +281,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         let currentLesson: any = null;
 
         // ✨ REGEX SUPER ESTRICTAS: Obligatorio que tengan un NÚMERO ✨
-        // Así evitamos que parta el módulo si encuentra la palabra "Unidad" suelta en un párrafo.
         const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s+\d+/i;
         const temaRegex = /^\s*(?:tema|lección|leccion|clase)\s+\d+/i;
         const examenRegex = /^\s*(?:examen|evaluación final|prueba final)/i;
@@ -320,10 +325,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
               title: line.substring(0, 150),
-              type: 'video', 
+              type: 'video', // Valor por defecto
               contentUrl: "",
               videoUrl: "",
-              textContent: "", 
+              textContent: "", // AQUÍ GUARDAMOS LA TEORÍA DIRECTAMENTE
               taskType: 'none', 
               taskDescription: "",
               taskUrl: ""
@@ -333,6 +338,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           // 4. Capturar el desarrollo teórico directo al TextContent
           else {
             if (currentLesson) {
+              // Agrega saltos de línea para que los párrafos se vean ordenados
               currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line;
             } else if (currentModule && currentModule.description.length < 300) {
               currentModule.description += (currentModule.description ? " " : "") + line;
@@ -615,7 +621,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             </h1>
           </div>
           
-          {isAdmin && (
+          {(isAdmin || safeUser.role === 'teacher') && (
             <button 
               onClick={() => openStudio()}
               className="bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-5 rounded-xl flex items-center gap-2 transition-all shadow-md"
@@ -1232,6 +1238,90 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                  </button>
               )}
             </div>
+
+            {/* ✨ CAJA DE ALUMNOS (RESTRINGIDA SOLO A ADMIN) ✨ */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col max-h-[650px]">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-sky-500" />
+                  <h2 className="font-bold text-slate-900 text-sm">Alumnos del Curso</h2>
+                </div>
+                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
+                  {Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents.length : 0} matriculados
+                </span>
+              </div>
+              
+              {!isAdmin ? (
+                 <div className="mt-4 p-4 text-center bg-slate-50 border border-slate-100 rounded-xl">
+                   <Lock className="w-5 h-5 text-slate-300 mx-auto mb-2"/>
+                   <p className="text-xs text-slate-500 font-bold">Solo el administrador puede matricular o dar de baja a estudiantes.</p>
+                 </div>
+              ) : (
+                <div className="mt-4 relative shrink-0">
+                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 transition-all overflow-hidden">
+                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      placeholder="Buscar alumno para matricular..."
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      className="w-full bg-transparent p-3 text-xs outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-y-auto mt-4 space-y-2 flex-1 scrollbar-none pr-1">
+                {(() => {
+                  const enrolledIds = Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents : [];
+                  const searchLower = studentSearch.trim().toLowerCase();
+                  
+                  let filteredStudents = safeStudents;
+
+                  if (searchLower === "") {
+                    filteredStudents = safeStudents.filter(s => enrolledIds.includes(s.id));
+                  } else if (isAdmin) {
+                    filteredStudents = safeStudents.filter(s => 
+                      s.name.toLowerCase().includes(searchLower) || 
+                      (s.email && s.email.toLowerCase().includes(searchLower))
+                    );
+                  }
+
+                  if (filteredStudents.length === 0) {
+                    return (
+                      <div className="text-center py-8">
+                        <p className="text-xs text-slate-400">
+                          {searchLower === "" 
+                            ? (isAdmin ? "No hay alumnos matriculados. Usa el buscador para agregarlos." : "Aún no te han asignado alumnos.")
+                            : "No se encontraron resultados para tu búsqueda."}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return filteredStudents.map(student => {
+                    const isEnrolled = enrolledIds.includes(student.id);
+                    return (
+                      <div 
+                        key={student.id} 
+                        onClick={() => toggleStudentEnrollment(student.id)} 
+                        className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isAdmin ? 'cursor-pointer hover:border-sky-300 hover:bg-slate-50' : 'cursor-default'} ${isEnrolled ? 'bg-sky-50 border-sky-200 shadow-sm' : 'bg-white border-slate-100'}`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <img src={student.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${student.name}`} alt="" className="w-7 h-7 rounded-full bg-white shadow-sm" />
+                          <div><p className="text-xs font-bold text-slate-700">{student.name}</p></div>
+                        </div>
+                        {isEnrolled ? (
+                          <UserCheck className="w-4 h-4 text-sky-600" />
+                        ) : (
+                          isAdmin && <Plus className="w-4 h-4 text-slate-300" />
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
           </div>
 
           <div className="lg:col-span-2 space-y-6">
@@ -1407,7 +1497,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 </div>
                               </div>
 
-                              {/* ✨ CAJA DE DESARROLLO TEÓRICO ✨ */}
+                              {/* ✨ CAJA DE DESARROLLO TEÓRICO (DONDE EL MOTOR PEGA EL TEXTO) ✨ */}
                               <div className="mt-3">
                                 <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Desarrollo Teórico / Contenido del Tema</label>
                                 <textarea 
@@ -1421,7 +1511,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             </div>
                           ))}
 
-                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO (MOVIDO AL FINAL) ✨ */}
                           <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
                             <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
                             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
@@ -1449,7 +1539,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               )}
                             </div>
                             
-                            {/* CREADOR DE EXAMEN NATIVO */}
+                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
                             {mod.examType === 'native' && (
                                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                                   <div className="flex justify-between items-center">
@@ -1492,90 +1582,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             )}
           </div>
 
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-full max-h-[650px]">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-sky-500" />
-                  <h2 className="font-bold text-slate-900 text-sm">Alumnos del Curso</h2>
-                </div>
-                <span className="bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-sm">
-                  {Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents.length : 0} matriculados
-                </span>
-              </div>
-              
-              {!isAdmin ? (
-                 <div className="mt-4 p-4 text-center bg-slate-50 border border-slate-100 rounded-xl">
-                   <Lock className="w-5 h-5 text-slate-300 mx-auto mb-2"/>
-                   <p className="text-xs text-slate-500 font-bold">Solo el administrador puede matricular o dar de baja a estudiantes.</p>
-                 </div>
-              ) : (
-                <div className="mt-4 relative shrink-0">
-                  <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 focus-within:border-sky-500 focus-within:ring-1 focus-within:ring-sky-500 transition-all overflow-hidden">
-                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Buscar alumno para matricular..."
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      className="w-full bg-transparent p-3 text-xs outline-none"
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="overflow-y-auto mt-4 space-y-2 flex-1 scrollbar-none pr-1">
-                {(() => {
-                  const enrolledIds = Array.isArray(courseForm?.enrolledStudents) ? courseForm.enrolledStudents : [];
-                  const searchLower = studentSearch.trim().toLowerCase();
-                  
-                  let filteredStudents = safeStudents;
-
-                  if (searchLower === "") {
-                    filteredStudents = safeStudents.filter(s => enrolledIds.includes(s.id));
-                  } else if (isAdmin) {
-                    filteredStudents = safeStudents.filter(s => 
-                      s.name.toLowerCase().includes(searchLower) || 
-                      (s.email && s.email.toLowerCase().includes(searchLower))
-                    );
-                  }
-
-                  if (filteredStudents.length === 0) {
-                    return (
-                      <div className="text-center py-8">
-                        <p className="text-xs text-slate-400">
-                          {searchLower === "" 
-                            ? (isAdmin ? "No hay alumnos matriculados. Usa el buscador para agregarlos." : "Aún no te han asignado alumnos.")
-                            : "No se encontraron resultados para tu búsqueda."}
-                        </p>
-                      </div>
-                    );
-                  }
-
-                  return filteredStudents.map(student => {
-                    const isEnrolled = enrolledIds.includes(student.id);
-                    return (
-                      <div 
-                        key={student.id} 
-                        onClick={() => toggleStudentEnrollment(student.id)} 
-                        className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isAdmin ? 'cursor-pointer hover:border-sky-300 hover:bg-slate-50' : 'cursor-default'} ${isEnrolled ? 'bg-sky-50 border-sky-200 shadow-sm' : 'bg-white border-slate-100'}`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <img src={student.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${student.name}`} alt="" className="w-7 h-7 rounded-full bg-white shadow-sm" />
-                          <div><p className="text-xs font-bold text-slate-700">{student.name}</p></div>
-                        </div>
-                        {isEnrolled ? (
-                          <UserCheck className="w-4 h-4 text-sky-600" />
-                        ) : (
-                          isAdmin && <Plus className="w-4 h-4 text-slate-300" />
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     );
