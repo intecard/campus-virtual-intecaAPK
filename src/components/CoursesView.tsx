@@ -7,7 +7,7 @@ import {
   ClipboardCheck, BarChart, ShieldCheck, Search, Lock, Sparkles, CheckCircle2
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, onSnapshot } from "firebase/firestore";
 import { Course, UserProfile } from "../types";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -76,7 +76,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   const [homeworkText, setHomeworkText] = useState("");
   const [submittingHomework, setSubmittingHomework] = useState(false);
 
-  // ✨ NUEVO: ESTADOS DE CONEXIÓN EN TIEMPO REAL CON FIREBASE ✨
+  // ✨ ESTADOS DE CONEXIÓN EN TIEMPO REAL CON FIREBASE ✨
   const [liveCourses, setLiveCourses] = useState<any[]>([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
 
@@ -97,12 +97,20 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }
   }, [safeUser.role, isAdmin]);
 
-  // ✨ NUEVO: ESCUCHADOR EN TIEMPO REAL DE CURSOS ✨
+  // ✨ ESCUCHADOR EN TIEMPO REAL DE CURSOS (BLINDADO CONTRA ERRORES DE ÍNDICE) ✨
   useEffect(() => {
-    const q = query(collection(db, "courses"), orderBy("createdAt", "desc"));
+    const q = collection(db, "courses");
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedCourses: any[] = [];
       snapshot.forEach(doc => fetchedCourses.push({ id: doc.id, ...doc.data() }));
+      
+      // Ordenamos localmente para evitar errores de Firestore por falta de índices
+      fetchedCourses.sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+
       setLiveCourses(fetchedCourses);
       setLoadingCourses(false);
     }, (error) => {
@@ -138,13 +146,22 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   const saveCourseToFirebase = async () => {
-    if (!courseForm.title || !courseForm.code || !courseForm.teacherId) {
-      alert("El título, el código y el profesor del curso son obligatorios.");
+    // 🚨 ALERTAS DE VALIDACIÓN MÁS ESPECÍFICAS
+    if (!courseForm.title || courseForm.title.trim() === "") {
+      alert("❌ Faltan datos: Por favor, escribe un Título para el curso antes de publicar.");
       return;
     }
+    if (!courseForm.code || courseForm.code.trim() === "") {
+      alert("❌ Faltan datos: Por favor, asigna un Código válido al curso.");
+      return;
+    }
+    if (!courseForm.teacherId) {
+      alert("❌ Faltan datos: Por favor, selecciona un Profesor / Titular de la lista desplegable.");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      // Evitamos errores si el usuario intenta guardar un curso de prueba que no existe en DB
       const isMockCourse = courseForm.id && String(courseForm.id).length < 10;
 
       if (courseForm.id && !isMockCourse) {
@@ -177,7 +194,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         );
       }
       
-      alert(courseForm.id ? "Curso actualizado con éxito." : "¡Curso creado y publicado en INTECA!");
+      alert(courseForm.id ? "✅ Curso actualizado con éxito." : "✅ ¡Curso creado y guardado en Firestore correctamente!");
       setViewMode('catalog');
     } catch (error) {
       console.error("Error guardando curso:", error);
@@ -224,7 +241,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
   };
 
   // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (V 2.0 INTELIGENTE)
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA (V 3.0 ESTRICTO)
   // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -251,22 +268,22 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           return;
         }
 
-        // Dividimos por saltos de línea y limpiamos vacíos (Cross-platform \r\n y \n)
+        // Dividimos por saltos de línea y limpiamos vacíos
         const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
         const newModules: any[] = [];
         let currentModule: any = null;
         let currentLesson: any = null;
 
-        // ✨ EXPRESIONES REGULARES INTELIGENTES ✨
-        // Atrapan cosas como: "Módulo 1", " 1. Unidad", " Tema 2", "Subtema:", "Examen Teórico", etc.
-        const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s*\d*/i;
-        const temaRegex = /^\s*(?:tema|lección|leccion|clase|subtema)\s*\d*/i;
-        const examenRegex = /examen|evaluación|prueba final/i;
+        // ✨ REGEX SUPER ESTRICTAS: Obligatorio que tengan un NÚMERO ✨
+        // Así evitamos que parta el módulo si encuentra la palabra "Unidad" suelta en un párrafo.
+        const moduloRegex = /^\s*(?:módulo|modulo|unidad|capítulo)\s+\d+/i;
+        const temaRegex = /^\s*(?:tema|lección|leccion|clase)\s+\d+/i;
+        const examenRegex = /^\s*(?:examen|evaluación final|prueba final)/i;
 
         lines.forEach(line => {
           const lowerLine = line.toLowerCase();
 
-          // 1. Detectar Módulo Nuevo
+          // 1. Detectar Módulo Nuevo (Ej. Módulo 1, Unidad 2)
           if (moduloRegex.test(lowerLine)) {
             currentModule = {
               id: `mod_${Date.now()}_${Math.random()}`,
@@ -280,13 +297,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             newModules.push(currentModule);
             currentLesson = null;
           } 
-          // 2. Detectar Examen (Activa el Examen Nativo Automáticamente)
-          else if (examenRegex.test(lowerLine)) {
+          // 2. Detectar Examen (Activa el Examen Nativo al final del Módulo actual)
+          else if (examenRegex.test(lowerLine) || lowerLine.includes('examen de tema')) {
             if (currentModule) {
               currentModule.examType = 'native'; 
             }
           }
-          // 3. Detectar Tema Nuevo
+          // 3. Detectar Tema Nuevo (Ej. Tema 1, Lección 2)
           else if (temaRegex.test(lowerLine)) {
             if (!currentModule) {
               currentModule = {
@@ -303,10 +320,10 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             currentLesson = {
               id: `les_${Date.now()}_${Math.random()}`,
               title: line.substring(0, 150),
-              type: 'video', // Valor por defecto
+              type: 'video', 
               contentUrl: "",
               videoUrl: "",
-              textContent: "", // AQUÍ GUARDAMOS LA TEORÍA DIRECTAMENTE
+              textContent: "", 
               taskType: 'none', 
               taskDescription: "",
               taskUrl: ""
@@ -316,7 +333,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           // 4. Capturar el desarrollo teórico directo al TextContent
           else {
             if (currentLesson) {
-              // Agrega saltos de línea para que los párrafos se vean ordenados
               currentLesson.textContent += (currentLesson.textContent ? "\n\n" : "") + line;
             } else if (currentModule && currentModule.description.length < 300) {
               currentModule.description += (currentModule.description ? " " : "") + line;
@@ -349,10 +365,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           });
         }
 
-        // ✨ MAGIA: Reemplazar el curso vacío en lugar de agregarlo al fondo ✨
         setCourseForm((prev: any) => {
           const currentMods = prev.modules || [];
-          // Verificamos si el curso está prácticamente vacío
           const isEmptyCourse = currentMods.length === 0 || 
                                (currentMods.length === 1 && currentMods[0].lessons.length === 0);
           
@@ -362,7 +376,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           };
         });
 
-        // ✨ ABRIMOS EL PRIMER MÓDULO AUTOMÁTICAMENTE PARA QUE LO VEAS ✨
         if (newModules.length > 0) {
           setExpandedModule(newModules[0].id);
         }
@@ -1394,7 +1407,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                 </div>
                               </div>
 
-                              {/* ✨ CAJA DE DESARROLLO TEÓRICO (DONDE EL MOTOR PEGA EL TEXTO) ✨ */}
+                              {/* ✨ CAJA DE DESARROLLO TEÓRICO ✨ */}
                               <div className="mt-3">
                                 <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Desarrollo Teórico / Contenido del Tema</label>
                                 <textarea 
@@ -1408,7 +1421,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                             </div>
                           ))}
 
-                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO (MOVIDO AL FINAL) ✨ */}
+                          {/* ✨ NUEVO: CONFIGURACIÓN DE EXAMEN DEL MÓDULO ✨ */}
                           <div className="mt-6 bg-white p-4 rounded-xl border-2 border-slate-200 shadow-sm">
                             <label className="block text-[11px] font-bold text-rose-500 uppercase mb-2">Examen del Módulo (Final)</label>
                             <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
@@ -1436,7 +1449,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                               )}
                             </div>
                             
-                            {/* CREADOR DE EXAMEN NATIVO (PREGUNTAS MULTIPLES) */}
+                            {/* CREADOR DE EXAMEN NATIVO */}
                             {mod.examType === 'native' && (
                                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
                                   <div className="flex justify-between items-center">
@@ -1479,7 +1492,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             )}
           </div>
 
-          {/* 🔒 BUSCADOR DE ALUMNOS MATRICULADOS - BLOQUEADO PARA DOCENTES 🔒 */}
           <div className="lg:col-span-1 space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex flex-col h-full max-h-[650px]">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -1519,11 +1531,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   
                   let filteredStudents = safeStudents;
 
-                  // Si el buscador está vacío, MUESTRA SOLO LOS MATRICULADOS
                   if (searchLower === "") {
                     filteredStudents = safeStudents.filter(s => enrolledIds.includes(s.id));
                   } else if (isAdmin) {
-                    // Si hay texto, busca en todos los estudiantes (solo admin)
                     filteredStudents = safeStudents.filter(s => 
                       s.name.toLowerCase().includes(searchLower) || 
                       (s.email && s.email.toLowerCase().includes(searchLower))
