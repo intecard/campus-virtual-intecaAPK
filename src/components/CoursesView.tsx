@@ -269,9 +269,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }));
   };
 
-  // ==========================================
-  // IA: EXTRACCIÓN Y GENERACIÓN MÁGICA EXCLUSIVA PARA EXÁMENES NATIVOS
-  // ==========================================
   const handleExamAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>, mIndex: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -356,9 +353,6 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     reader.readAsArrayBuffer(file);
   };
 
-  // ==========================================
-  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
-  // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1204,7 +1198,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <ClipboardCheck className="w-5 h-5 text-indigo-600" />
                   <h3 className="font-bold text-slate-900 text-lg">Fiscalización Metodológica</h3>
                 </div>
-                <p className="text-xs text-slate-500">Evalúe la estructura didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
+                <p className="text-xs text-slate-500">Evalúe la structure didáctica, el impacto en los estudiantes y el cumplimiento de las normativas de este programa.</p>
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1346,6 +1340,18 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                   <div className="flex-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Categoría</label>
                     <input type="text" disabled={!isAdmin} value={courseForm.category} onChange={e => setCourseForm({...courseForm, category: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} />
+                  </div>
+                </div>
+
+                {/* ✨ NUEVO: CAMPOS DE DURACIÓN Y NIVEL ✨ */}
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Duración</label>
+                    <input type="text" disabled={!isAdmin} value={courseForm.duration} onChange={e => setCourseForm({...courseForm, duration: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} placeholder="Ej. 5 meses" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1.5">Nivel</label>
+                    <input type="text" disabled={!isAdmin} value={courseForm.level} onChange={e => setCourseForm({...courseForm, level: e.target.value})} className={`w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs outline-none ${!isAdmin ? 'cursor-not-allowed opacity-70' : ''}`} placeholder="Ej. Básico" />
                   </div>
                 </div>
 
