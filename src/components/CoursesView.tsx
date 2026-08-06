@@ -7,7 +7,7 @@ import {
   ClipboardCheck, BarChart, ShieldCheck, Search, Lock, Sparkles, CheckCircle2
 } from "lucide-react";
 import { db, logUserActivity } from "../firebase"; 
-import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, deleteDoc, getDocs, serverTimestamp, arrayUnion, query, onSnapshot } from "firebase/firestore";
 import { Course, UserProfile } from "../types";
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
@@ -114,7 +114,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           // Solo agarramos los examenes finales hechos por ESTE estudiante
           if (data.studentId === safeUser.id && data.type === 'module_exam') {
             exams[data.assessmentId] = {
-              score: data.score || 0,
+              score: data.score ? Math.round(data.score) : 0,
               answers: data.content ? JSON.parse(data.content) : {}
             };
           }
@@ -269,6 +269,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     }));
   };
 
+  // ==========================================
+  // IA: EXTRACCIÓN Y GENERACIÓN MÁGICA EXCLUSIVA PARA EXÁMENES NATIVOS
+  // ==========================================
   const handleExamAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>, mIndex: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -298,7 +301,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         const newQuestions: any[] = [];
         
         const preguntaRegex = /^\s*\d+[\.\-\)]\s*(.+)/;
-        const opcionRegex = /^\s*[a-e][\.\-\)]\s*(.+)/i;
+        // ✨ REGEX MODIFICADA: Atrapa si hay un asterisco '*' antes de la opción ✨
+        const opcionRegex = /^\s*(\*)?\s*[a-e][\.\-\)]\s*(.+)/i;
 
         lines.forEach(line => {
           const qMatch = preguntaRegex.exec(line);
@@ -306,7 +310,16 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           
           if (oMatch) {
             if (newQuestions.length > 0) {
-              newQuestions[newQuestions.length - 1].options.push(oMatch[1]);
+              const currentQ = newQuestions[newQuestions.length - 1];
+              const isCorrect = !!oMatch[1]; // True si traía asterisco
+              const optText = oMatch[2].trim();
+              
+              currentQ.options.push(optText);
+              
+              // Si la IA encontró el asterisco, marca esta opción como la correcta
+              if (isCorrect) {
+                currentQ.correct = currentQ.options.length - 1;
+              }
             }
           } else if (qMatch || line.endsWith('?')) {
             const qText = qMatch ? qMatch[1] : line;
@@ -343,6 +356,9 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
     reader.readAsArrayBuffer(file);
   };
 
+  // ==========================================
+  // IA: MOTOR ALGORÍTMICO NATIVO DE GENERACIÓN DE MALLA
+  // ==========================================
   const handleAIGeneration = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -378,7 +394,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         const temaRegex = /^\s*(?:tema|lección|leccion|clase)\s+\d+/i;
         const examenRegex = /^\s*(?:examen|evaluación|prueba final)/i;
         const preguntaRegex = /^\s*\d+[\.\-\)]\s*(.+)/;
-        const opcionRegex = /^\s*[a-e][\.\-\)]\s*(.+)/i;
+        // ✨ REGEX MODIFICADA: Atrapa si hay un asterisco '*' antes de la opción ✨
+        const opcionRegex = /^\s*(\*)?\s*[a-e][\.\-\)]\s*(.+)/i;
 
         lines.forEach(line => {
           const lowerLine = line.toLowerCase();
@@ -437,7 +454,14 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
             
             if (oMatch) {
               const lastQ = currentModule.examQuestions[currentModule.examQuestions.length - 1];
-              if (lastQ) lastQ.options.push(oMatch[1]);
+              if (lastQ) {
+                const isCorrect = !!oMatch[1]; // True si trae asterisco
+                const optText = oMatch[2].trim();
+                lastQ.options.push(optText);
+                if (isCorrect) {
+                  lastQ.correct = lastQ.options.length - 1;
+                }
+              }
             } else if (qMatch || line.endsWith('?')) {
               const qText = qMatch ? qMatch[1] : line;
               currentModule.examQuestions.push({ question: qText, options: [], correct: 0 });
@@ -620,7 +644,8 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
         courseId: selectedCourse.id, courseTitle: selectedCourse.title,
         assessmentId: itemId, assessmentTitle: itemTitle,
         studentId: safeUser.id, studentName: safeUser.name,
-        type, content, fileUrl: fileUrl || "", score: score !== undefined ? score : null,
+        type, content, fileUrl: fileUrl || "", 
+        score: score !== undefined ? Math.round(score) : null, // Blindaje de decimales
         submittedAt: serverTimestamp(), status: 'pending' 
       });
       alert(type === 'module_exam' ? `¡Examen completado y enviado!` : "¡Evaluación entregada exitosamente!");
@@ -654,7 +679,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
       if(Number(answers[idx]) === Number(q.correct)) correctCount++; 
     });
     
-    // Cálculo de porcentaje garantizado (Evitamos divisiones raras o decimales largos)
+    // Cálculo de porcentaje garantizado sin decimales
     const totalQuestions = Math.max(safeQuestions.length, 1);
     const score = Math.round((correctCount / totalQuestions) * 100);
     
@@ -1030,7 +1055,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                         <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mt-4 space-y-4">
                                           <div>
                                             <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1">Calificación Obtenida</p>
-                                            <p className="text-4xl font-black text-emerald-700">{completedExams[mod.id].score} / 100</p>
+                                            <p className="text-4xl font-black text-emerald-700">{Math.round(completedExams[mod.id].score)} / 100</p>
                                           </div>
                                           <button 
                                             onClick={() => {
@@ -1695,6 +1720,13 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                        }} className="text-[10px] bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg font-bold hover:bg-slate-100 shadow-sm">+ Añadir Manual</button>
                                      </div>
                                   </div>
+
+                                  {/* ALERTA VISUAL PARA EL PROFESOR */}
+                                  <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-lg text-xs mt-2 mb-4 flex items-start gap-2 shadow-sm">
+                                    <Award className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <p><strong>¡Importante!</strong> Marca el círculo ( <input type="radio" className="mx-1 accent-amber-600" readOnly checked/> ) al lado de la respuesta correcta en cada pregunta para que el sistema pueda calificar automáticamente a los alumnos.</p>
+                                  </div>
+
                                   {(!mod.examQuestions || mod.examQuestions.length === 0) ? <p className="text-xs text-slate-400 italic">No hay preguntas agregadas. Usa "Importar de Word" o escríbelas manual.</p> : (
                                      mod.examQuestions.map((q: any, qIdx: number) => (
                                         <div key={qIdx} className="p-3 border border-slate-200 rounded-lg bg-white relative shadow-sm">
@@ -1703,7 +1735,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
                                            <div className="space-y-2 pl-2">
                                               {q.options.map((opt: string, oIdx: number) => (
                                                  <div key={oIdx} className="flex items-center gap-2">
-                                                    <input type="radio" className="accent-rose-500" checked={q.correct === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
+                                                    <input type="radio" className="accent-rose-500" checked={Number(q.correct) === oIdx} onChange={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].correct = oIdx; setCourseForm({...courseForm, modules: nm}); }} title="Marcar como respuesta correcta" />
                                                     <input type="text" value={opt} onChange={e => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options[oIdx] = e.target.value; setCourseForm({...courseForm, modules: nm}); }} className="flex-1 text-xs p-1.5 border border-slate-200 rounded-md outline-none focus:border-rose-500 text-slate-600" placeholder={`Opción ${oIdx + 1}`}/>
                                                     {q.options.length > 2 && <button onClick={() => { const nm=[...safeFormModules]; nm[mIndex].examQuestions[qIdx].options.splice(oIdx, 1); if(q.correct>=oIdx && q.correct>0) nm[mIndex].examQuestions[qIdx].correct--; setCourseForm({...courseForm, modules: nm}); }}><Trash2 className="w-3 h-3 text-slate-400 hover:text-rose-500"/></button>}
                                                  </div>
@@ -1833,7 +1865,7 @@ export default function CoursesView({ currentUser, courses = [], setActiveTab }:
           <div className="flex items-center gap-4 w-full md:w-auto">
             <div className="bg-slate-800 px-4 py-2 rounded-xl text-center border border-slate-700 flex-1 md:flex-none">
               <span className="block text-[10px] text-slate-400 font-bold uppercase">Calificación</span>
-              <span className="text-lg font-black text-emerald-400">{submission.score.toFixed(0)} / 100</span>
+              <span className="text-lg font-black text-emerald-400">{Math.round(submission.score)} / 100</span>
             </div>
             <button 
               onClick={() => setViewMode('detail')} 
