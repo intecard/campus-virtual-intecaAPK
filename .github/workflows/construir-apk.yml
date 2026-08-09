@@ -7,7 +7,7 @@ on:
 
 jobs:
   # ==========================================
-  # 1. GENERAR APK DE ANDROID (TU BASE INTACTA)
+  # 1. GENERAR APK DE ANDROID (INTACTO)
   # ==========================================
   build-android:
     runs-on: ubuntu-latest
@@ -73,7 +73,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
   # ==========================================
-  # 2. GENERAR APP PARA iOS (.ipa) - NUEVO
+  # 2. GENERAR APP PARA iOS (.ipa BLINDADO)
   # ==========================================
   build-ios:
     runs-on: macos-latest
@@ -103,14 +103,19 @@ jobs:
         run: |
           npx cap add ios || true
           npx cap sync ios
+          cd ios/App && pod install --repo-update || true
 
       - name: 🎨 Generar Logo e Íconos para iOS
-        run: npx @capacitor/assets generate --ios
+        run: npx @capacitor/assets generate --ios || true
 
-      - name: 🚀 Compilar App de iOS (.ipa sin firma obligatoria de Apple)
+      - name: 🚀 Compilar App de iOS (Auto-detección Workspace/Project)
         working-directory: ./ios/App
         run: |
-          xcodebuild -workspace App.xcworkspace -scheme App -sdk iphoneos -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR=./build build
+          if [ -d "App.xcworkspace" ]; then
+            xcodebuild -workspace App.xcworkspace -scheme App -sdk iphoneos -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR=./build build
+          else
+            xcodebuild -project App.xcodeproj -scheme App -sdk iphoneos -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR=./build build
+          fi
           mkdir -p Payload
           mv ./build/App.app Payload/
           zip -r campus-virtual-ios.ipa Payload
@@ -144,6 +149,34 @@ jobs:
 
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
+
+      - name: 📄 Auto-crear archivo puente de Electron (electron-main.cjs)
+        run: |
+          cat << 'EOF' > electron-main.cjs
+          const { app, BrowserWindow } = require('electron');
+          const path = require('path');
+          function createWindow() {
+            const win = new BrowserWindow({
+              width: 1280,
+              height: 800,
+              title: "INTECA Campus Virtual",
+              webPreferences: { nodeIntegration: false, contextIsolation: true }
+            });
+            win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+          }
+          app.whenReady().then(() => {
+            createWindow();
+            app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+          });
+          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+          EOF
+
+      - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
+        run: |
+          npm pkg set main="electron-main.cjs"
+          npm pkg set build.files.0="dist/**/*"
+          npm pkg set build.files.1="electron-main.cjs"
+          npm pkg set build.files.2="package.json"
 
       - name: 🖥️ Compilar instalador de Windows (.exe)
         run: |
@@ -181,6 +214,34 @@ jobs:
 
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
+
+      - name: 📄 Auto-crear archivo puente de Electron (electron-main.cjs)
+        run: |
+          cat << 'EOF' > electron-main.cjs
+          const { app, BrowserWindow } = require('electron');
+          const path = require('path');
+          function createWindow() {
+            const win = new BrowserWindow({
+              width: 1280,
+              height: 800,
+              title: "INTECA Campus Virtual",
+              webPreferences: { nodeIntegration: false, contextIsolation: true }
+            });
+            win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+          }
+          app.whenReady().then(() => {
+            createWindow();
+            app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+          });
+          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+          EOF
+
+      - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
+        run: |
+          npm pkg set main="electron-main.cjs"
+          npm pkg set build.files.0="dist/**/*"
+          npm pkg set build.files.1="electron-main.cjs"
+          npm pkg set build.files.2="package.json"
 
       - name: 🍏 Compilar instalador de macOS (.dmg)
         run: |
