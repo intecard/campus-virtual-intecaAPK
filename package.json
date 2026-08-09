@@ -66,13 +66,17 @@
     },
     "files": [
       "dist/**/*",
-      "electron-main.cjs"
+      "electron-main.cjs",
+      "icon.png",
+      "icon.ico"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "icon.ico"
     },
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "icon.png"
     }
   }
 }
