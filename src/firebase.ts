@@ -36,7 +36,7 @@ const firebaseConfig = {
   projectId: "gen-lang-client-0415952714",
   appId: "1:266892587219:web:4f9de6cb6569ff5fd6a426",
   apiKey: "AIzaSyBQYfH5BnpwPJY-ez683MFnYHjDmfR6xGM",
-  authDomain: "campus.inteca.com.do",
+  authDomain: "gen-lang-client-0415952714.firebaseapp.com",
   firestoreDatabaseId: "ai-studio-campusvirtualint-dbc5e5fa-0c2e-4740-85d5-91566cdb7d70",
   storageBucket: "gen-lang-client-0415952714.firebasestorage.app",
   messagingSenderId: "266892587219"
