@@ -7,7 +7,7 @@ on:
 
 jobs:
   # ==========================================
-  # 1. GENERAR APK DE ANDROID (INTACTO)
+  # 1. GENERAR APK DE ANDROID (INTACTO + LOGO)
   # ==========================================
   build-android:
     runs-on: ubuntu-latest
@@ -42,8 +42,11 @@ jobs:
       - name: 🤖 Sincronizar proyecto con Android
         run: npx cap sync android
 
-      - name: 🎨 Generar Logo e Íconos
-        run: npx @capacitor/assets generate --android
+      - name: 🎨 Generar Logo e Íconos de INTECA para Android
+        run: |
+          mkdir -p assets
+          if [ -f "icon.png" ]; then cp icon.png assets/icon.png; fi
+          npx @capacitor/assets generate --android || true
 
       - name: 🩹 Resolver conflicto de Kotlin (Clases duplicadas)
         working-directory: ./android
@@ -73,7 +76,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
 
   # ==========================================
-  # 2. GENERAR APP PARA iOS (.ipa BLINDADO)
+  # 2. GENERAR APP PARA iOS (.ipa + LOGO)
   # ==========================================
   build-ios:
     runs-on: macos-latest
@@ -105,8 +108,11 @@ jobs:
           npx cap sync ios
           cd ios/App && pod install --repo-update || true
 
-      - name: 🎨 Generar Logo e Íconos para iOS
-        run: npx @capacitor/assets generate --ios || true
+      - name: 🎨 Generar Logo e Íconos de INTECA para iOS
+        run: |
+          mkdir -p assets
+          if [ -f "icon.png" ]; then cp icon.png assets/icon.png; fi
+          npx @capacitor/assets generate --ios || true
 
       - name: 🚀 Compilar App de iOS (Auto-detección Workspace/Project)
         working-directory: ./ios/App
@@ -127,7 +133,7 @@ jobs:
           path: ios/App/campus-virtual-ios.ipa
 
   # ==========================================
-  # 3. GENERAR PROGRAMA PARA WINDOWS (.exe)
+  # 3. GENERAR PROGRAMA PARA WINDOWS (.exe + LOGO)
   # ==========================================
   build-windows:
     runs-on: windows-latest
@@ -150,7 +156,7 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear servidor interno en Electron (electron-main.cjs)
+      - name: 📄 Auto-crear servidor interno en Electron con ícono oficial
         shell: bash
         run: |
           cat << 'EOF' > electron-main.cjs
@@ -196,10 +202,12 @@ jobs:
           }
 
           function createWindow() {
+            const iconPath = path.join(__dirname, 'icon.png');
             const win = new BrowserWindow({
               width: 1280,
               height: 800,
               title: "INTECA Campus Virtual",
+              icon: fs.existsSync(iconPath) ? iconPath : undefined,
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
             win.loadURL(`http://localhost:${PORT}`);
@@ -216,12 +224,16 @@ jobs:
           });
           EOF
 
-      - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
+      - name: ⚙️ Blindar package.json para usar icon.png en instalador y ventana
         run: |
           npm pkg set main="electron-main.cjs"
+          npm pkg set build.icon="icon.png"
+          npm pkg set build.win.icon="icon.png"
+          npm pkg set build.mac.icon="icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
+          npm pkg set build.files.3="icon.png"
 
       - name: 🖥️ Compilar instalador de Windows (.exe)
         run: |
@@ -237,7 +249,7 @@ jobs:
           path: release/*.exe
 
   # ==========================================
-  # 4. GENERAR PROGRAMA PARA macOS (.dmg)
+  # 4. GENERAR PROGRAMA PARA macOS (.dmg + LOGO)
   # ==========================================
   build-mac:
     runs-on: macos-latest
@@ -260,7 +272,7 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear servidor interno en Electron (electron-main.cjs)
+      - name: 📄 Auto-crear servidor interno en Electron con ícono oficial
         run: |
           cat << 'EOF' > electron-main.cjs
           const { app, BrowserWindow } = require('electron');
@@ -305,10 +317,12 @@ jobs:
           }
 
           function createWindow() {
+            const iconPath = path.join(__dirname, 'icon.png');
             const win = new BrowserWindow({
               width: 1280,
               height: 800,
               title: "INTECA Campus Virtual",
+              icon: fs.existsSync(iconPath) ? iconPath : undefined,
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
             win.loadURL(`http://localhost:${PORT}`);
@@ -325,12 +339,16 @@ jobs:
           });
           EOF
 
-      - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
+      - name: ⚙️ Blindar package.json para usar icon.png en instalador y ventana
         run: |
           npm pkg set main="electron-main.cjs"
+          npm pkg set build.icon="icon.png"
+          npm pkg set build.win.icon="icon.png"
+          npm pkg set build.mac.icon="icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
+          npm pkg set build.files.3="icon.png"
 
       - name: 🍏 Compilar instalador de macOS (.dmg)
         run: |
