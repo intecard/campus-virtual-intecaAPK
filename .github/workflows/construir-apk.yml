@@ -156,16 +156,11 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio y conversor de íconos
         run: npm install electron electron-builder png-to-ico --save-dev --legacy-peer-deps
 
-      - name: 🎨 Convertir icon.png a formato Windows (.ico) y preparar carpetas
-        shell: bash
+      - name: 🎨 Convertir icon.png a formato Windows (.ico) binario puro
         run: |
-          npx --yes png-to-ico icon.png > icon.ico || true
-          mkdir -p build
+          node -e "const fs = require('fs'), pngToIco = require('png-to-ico'); pngToIco('icon.png').then(buf => { fs.mkdirSync('build', {recursive:true}); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('icon.ico', buf); fs.writeFileSync('build/icon.ico', buf); fs.writeFileSync('dist/icon.ico', buf); }).catch(e => { console.error(e); process.exit(1); });"
           cp icon.png build/icon.png || true
-          cp icon.ico build/icon.ico || true
-          mkdir -p dist
           cp icon.png dist/icon.png || true
-          cp icon.ico dist/icon.ico || true
 
       - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         shell: bash
