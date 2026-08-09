@@ -213,6 +213,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     try {
       let result;
 
+      // Detecta si es App Móvil Nativa (Android / iOS) o Escritorio/Web (Windows / Mac)
       if (Capacitor.isNativePlatform()) {
         GoogleAuth.initialize({
           clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
@@ -230,6 +231,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         result = await signInWithCredential(auth, credential);
 
       } else {
+        // Modo Web y Programas de Escritorio (Windows / macOS via Electron)
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
@@ -246,6 +248,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         handleMfaRequired(err);
       } else if (err.code === 'auth/popup-closed-by-user' || err.type === 'user_cancelled') {
         setLoading(false); 
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError("Dominio no autorizado en Firebase. Verifica que localhost y 127.0.0.1 estén en tu consola.");
+        setLoading(false);
       } else {
         const errorMsg = err.message || JSON.stringify(err);
         setError(`Error Google: ${errorMsg}`);
