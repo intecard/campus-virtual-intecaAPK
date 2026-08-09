@@ -1,9 +1,14 @@
-name: Ensamblar APK de Android
+name: Ensamblar Aplicaciones (Android, iOS, Windows y Mac)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ main, master ]
 
 jobs:
+  # ==========================================
+  # 1. GENERAR APK DE ANDROID (TU BASE INTACTA)
+  # ==========================================
   build-android:
     runs-on: ubuntu-latest
 
@@ -66,3 +71,126 @@ jobs:
         with:
           name: campus-virtual-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+  # ==========================================
+  # 2. GENERAR APP PARA iOS (.ipa) - NUEVO
+  # ==========================================
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: 📥 Descargar código
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
+        run: npm pkg delete overrides
+
+      - name: 📦 Instalar dependencias web
+        run: npm install --legacy-peer-deps
+
+      - name: 🛠️ Asegurar Motor de Capacitor y herramientas de iOS
+        run: npm install @capacitor/cli @capacitor/ios @capacitor/assets --legacy-peer-deps
+
+      - name: 🏗️ Construir Web (Vite)
+        run: npx vite build
+
+      - name: 🍏 Añadir y sincronizar proyecto con iOS
+        run: |
+          npx cap add ios || true
+          npx cap sync ios
+
+      - name: 🎨 Generar Logo e Íconos para iOS
+        run: npx @capacitor/assets generate --ios
+
+      - name: 🚀 Compilar App de iOS (.ipa sin firma obligatoria de Apple)
+        working-directory: ./ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App -sdk iphoneos -configuration Debug CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CONFIGURATION_BUILD_DIR=./build build
+          mkdir -p Payload
+          mv ./build/App.app Payload/
+          zip -r campus-virtual-ios.ipa Payload
+
+      - name: 🎁 Guardar y entregar archivo .IPA de iOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-virtual-ios-ipa
+          path: ios/App/campus-virtual-ios.ipa
+
+  # ==========================================
+  # 3. GENERAR PROGRAMA PARA WINDOWS (.exe)
+  # ==========================================
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: 📥 Descargar código
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
+        run: npm pkg delete overrides
+
+      - name: 📦 Instalar dependencias web
+        run: npm install --legacy-peer-deps
+
+      - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
+        run: npm install electron electron-builder --save-dev --legacy-peer-deps
+
+      - name: 🖥️ Compilar instalador de Windows (.exe)
+        run: |
+          npx vite build
+          npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🎁 Guardar y entregar archivo .EXE de Windows
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-virtual-windows-exe
+          path: release/*.exe
+
+  # ==========================================
+  # 4. GENERAR PROGRAMA PARA macOS (.dmg)
+  # ==========================================
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - name: 📥 Descargar código
+        uses: actions/checkout@v4
+
+      - name: 🟢 Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
+        run: npm pkg delete overrides
+
+      - name: 📦 Instalar dependencias web
+        run: npm install --legacy-peer-deps
+
+      - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
+        run: npm install electron electron-builder --save-dev --legacy-peer-deps
+
+      - name: 🍏 Compilar instalador de macOS (.dmg)
+        run: |
+          npx vite build
+          npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🎁 Guardar y entregar archivo .DMG de Mac
+        uses: actions/upload-artifact@v4
+        with:
+          name: campus-virtual-macos-dmg
+          path: release/*.dmg
