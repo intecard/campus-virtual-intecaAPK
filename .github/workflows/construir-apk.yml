@@ -133,7 +133,7 @@ jobs:
           path: ios/App/campus-virtual-ios.ipa
 
   # ==========================================
-  # 3. GENERAR PROGRAMA PARA WINDOWS (.exe + LOGO)
+  # 3. GENERAR PROGRAMA PARA WINDOWS (.exe + LOGO OFICIAL)
   # ==========================================
   build-windows:
     runs-on: windows-latest
@@ -153,10 +153,21 @@ jobs:
       - name: 📦 Instalar dependencias web
         run: npm install --legacy-peer-deps
 
-      - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
-        run: npm install electron electron-builder --save-dev --legacy-peer-deps
+      - name: 🛠️ Asegurar herramientas de Escritorio y conversor de íconos
+        run: npm install electron electron-builder png-to-ico --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear servidor interno en Electron con ícono oficial
+      - name: 🎨 Convertir icon.png a formato Windows (.ico) y preparar carpetas
+        shell: bash
+        run: |
+          npx --yes png-to-ico icon.png > icon.ico || true
+          mkdir -p build
+          cp icon.png build/icon.png || true
+          cp icon.ico build/icon.ico || true
+          mkdir -p dist
+          cp icon.png dist/icon.png || true
+          cp icon.ico dist/icon.ico || true
+
+      - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         shell: bash
         run: |
           cat << 'EOF' > electron-main.cjs
@@ -164,6 +175,10 @@ jobs:
           const path = require('path');
           const http = require('http');
           const fs = require('fs');
+
+          if (process.platform === 'win32') {
+            app.setAppUserModelId("INTECA Campus Virtual");
+          }
 
           const PORT = 45678;
           const DIST_DIR = path.join(__dirname, 'dist');
@@ -201,13 +216,26 @@ jobs:
             server.listen(PORT, 'localhost');
           }
 
+          function getAppIcon() {
+            const icoRoot = path.join(__dirname, 'icon.ico');
+            const icoDist = path.join(__dirname, 'dist', 'icon.ico');
+            const pngRoot = path.join(__dirname, 'icon.png');
+            const pngDist = path.join(__dirname, 'dist', 'icon.png');
+            if (process.platform === 'win32') {
+              if (fs.existsSync(icoRoot)) return icoRoot;
+              if (fs.existsSync(icoDist)) return icoDist;
+            }
+            if (fs.existsSync(pngRoot)) return pngRoot;
+            if (fs.existsSync(pngDist)) return pngDist;
+            return undefined;
+          }
+
           function createWindow() {
-            const iconPath = path.join(__dirname, 'icon.png');
             const win = new BrowserWindow({
               width: 1280,
               height: 800,
               title: "INTECA Campus Virtual",
-              icon: fs.existsSync(iconPath) ? iconPath : undefined,
+              icon: getAppIcon(),
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
             win.loadURL(`http://localhost:${PORT}`);
@@ -224,16 +252,17 @@ jobs:
           });
           EOF
 
-      - name: ⚙️ Blindar package.json para usar icon.png en instalador y ventana
+      - name: ⚙️ Blindar package.json para obligar a Windows a usar icon.ico
         run: |
           npm pkg set main="electron-main.cjs"
-          npm pkg set build.icon="icon.png"
-          npm pkg set build.win.icon="icon.png"
-          npm pkg set build.mac.icon="icon.png"
+          npm pkg set build.directories.buildResources="build"
+          npm pkg set build.win.icon="build/icon.ico"
+          npm pkg set build.mac.icon="build/icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
           npm pkg set build.files.3="icon.png"
+          npm pkg set build.files.4="icon.ico"
 
       - name: 🖥️ Compilar instalador de Windows (.exe)
         run: |
@@ -249,7 +278,7 @@ jobs:
           path: release/*.exe
 
   # ==========================================
-  # 4. GENERAR PROGRAMA PARA macOS (.dmg + LOGO)
+  # 4. GENERAR PROGRAMA PARA macOS (.dmg + LOGO OFICIAL)
   # ==========================================
   build-mac:
     runs-on: macos-latest
@@ -272,7 +301,14 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear servidor interno en Electron con ícono oficial
+      - name: 🎨 Preparar carpeta oficial build/ con ícono de INTECA
+        run: |
+          mkdir -p build
+          cp icon.png build/icon.png || true
+          mkdir -p dist
+          cp icon.png dist/icon.png || true
+
+      - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         run: |
           cat << 'EOF' > electron-main.cjs
           const { app, BrowserWindow } = require('electron');
@@ -316,13 +352,26 @@ jobs:
             server.listen(PORT, 'localhost');
           }
 
+          function getAppIcon() {
+            const icoRoot = path.join(__dirname, 'icon.ico');
+            const icoDist = path.join(__dirname, 'dist', 'icon.ico');
+            const pngRoot = path.join(__dirname, 'icon.png');
+            const pngDist = path.join(__dirname, 'dist', 'icon.png');
+            if (process.platform === 'win32') {
+              if (fs.existsSync(icoRoot)) return icoRoot;
+              if (fs.existsSync(icoDist)) return icoDist;
+            }
+            if (fs.existsSync(pngRoot)) return pngRoot;
+            if (fs.existsSync(pngDist)) return pngDist;
+            return undefined;
+          }
+
           function createWindow() {
-            const iconPath = path.join(__dirname, 'icon.png');
             const win = new BrowserWindow({
               width: 1280,
               height: 800,
               title: "INTECA Campus Virtual",
-              icon: fs.existsSync(iconPath) ? iconPath : undefined,
+              icon: getAppIcon(),
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
             win.loadURL(`http://localhost:${PORT}`);
@@ -339,16 +388,17 @@ jobs:
           });
           EOF
 
-      - name: ⚙️ Blindar package.json para usar icon.png en instalador y ventana
+      - name: ⚙️ Blindar package.json para usar icon.png en macOS
         run: |
           npm pkg set main="electron-main.cjs"
-          npm pkg set build.icon="icon.png"
-          npm pkg set build.win.icon="icon.png"
-          npm pkg set build.mac.icon="icon.png"
+          npm pkg set build.directories.buildResources="build"
+          npm pkg set build.win.icon="build/icon.ico"
+          npm pkg set build.mac.icon="build/icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
           npm pkg set build.files.3="icon.png"
+          npm pkg set build.files.4="icon.ico"
 
       - name: 🍏 Compilar instalador de macOS (.dmg)
         run: |
