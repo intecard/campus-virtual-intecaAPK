@@ -151,6 +151,7 @@ jobs:
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
       - name: 📄 Auto-crear archivo puente de Electron (electron-main.cjs)
+        shell: bash
         run: |
           cat << 'EOF' > electron-main.cjs
           const { app, BrowserWindow } = require('electron');
