@@ -150,12 +150,51 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear archivo puente de Electron (electron-main.cjs)
+      - name: 📄 Auto-crear servidor interno en Electron (electron-main.cjs)
         shell: bash
         run: |
           cat << 'EOF' > electron-main.cjs
           const { app, BrowserWindow } = require('electron');
           const path = require('path');
+          const http = require('http');
+          const fs = require('fs');
+
+          const PORT = 45678;
+          const DIST_DIR = path.join(__dirname, 'dist');
+
+          const MIME_TYPES = {
+            '.html': 'text/html',
+            '.js': 'application/javascript',
+            '.mjs': 'application/javascript',
+            '.css': 'text/css',
+            '.json': 'application/json',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon'
+          };
+
+          function startLocalServer() {
+            const server = http.createServer((req, res) => {
+              let filePath = path.join(DIST_DIR, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+              if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                filePath = path.join(DIST_DIR, 'index.html');
+              }
+              const ext = path.extname(filePath).toLowerCase();
+              const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+              fs.readFile(filePath, (err, content) => {
+                if (err) {
+                  res.writeHead(500);
+                  res.end('Error interno del servidor');
+                } else {
+                  res.writeHead(200, { 'Content-Type': contentType });
+                  res.end(content, 'utf-8');
+                }
+              });
+            });
+            server.listen(PORT, 'localhost');
+          }
+
           function createWindow() {
             const win = new BrowserWindow({
               width: 1280,
@@ -163,13 +202,18 @@ jobs:
               title: "INTECA Campus Virtual",
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
-            win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+            win.loadURL(`http://localhost:${PORT}`);
           }
+
           app.whenReady().then(() => {
+            startLocalServer();
             createWindow();
             app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
           });
-          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+          app.on('window-all-closed', () => {
+            if (process.platform !== 'darwin') app.quit();
+          });
           EOF
 
       - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
@@ -216,11 +260,50 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 📄 Auto-crear archivo puente de Electron (electron-main.cjs)
+      - name: 📄 Auto-crear servidor interno en Electron (electron-main.cjs)
         run: |
           cat << 'EOF' > electron-main.cjs
           const { app, BrowserWindow } = require('electron');
           const path = require('path');
+          const http = require('http');
+          const fs = require('fs');
+
+          const PORT = 45678;
+          const DIST_DIR = path.join(__dirname, 'dist');
+
+          const MIME_TYPES = {
+            '.html': 'text/html',
+            '.js': 'application/javascript',
+            '.mjs': 'application/javascript',
+            '.css': 'text/css',
+            '.json': 'application/json',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon'
+          };
+
+          function startLocalServer() {
+            const server = http.createServer((req, res) => {
+              let filePath = path.join(DIST_DIR, req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+              if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                filePath = path.join(DIST_DIR, 'index.html');
+              }
+              const ext = path.extname(filePath).toLowerCase();
+              const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+              fs.readFile(filePath, (err, content) => {
+                if (err) {
+                  res.writeHead(500);
+                  res.end('Error interno del servidor');
+                } else {
+                  res.writeHead(200, { 'Content-Type': contentType });
+                  res.end(content, 'utf-8');
+                }
+              });
+            });
+            server.listen(PORT, 'localhost');
+          }
+
           function createWindow() {
             const win = new BrowserWindow({
               width: 1280,
@@ -228,13 +311,18 @@ jobs:
               title: "INTECA Campus Virtual",
               webPreferences: { nodeIntegration: false, contextIsolation: true }
             });
-            win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+            win.loadURL(`http://localhost:${PORT}`);
           }
+
           app.whenReady().then(() => {
+            startLocalServer();
             createWindow();
             app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
           });
-          app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+          app.on('window-all-closed', () => {
+            if (process.platform !== 'darwin') app.quit();
+          });
           EOF
 
       - name: ⚙️ Blindar package.json para incluir electron-main.cjs en app.asar
