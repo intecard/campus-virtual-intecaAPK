@@ -156,7 +156,7 @@ jobs:
       - name: 🛠️ Asegurar herramientas de Escritorio
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 🎨 Convertir icon.png a formato Windows (.ico) con Python Pillow (Blindado)
+      - name: 🎨 Convertir icon.png a formato Windows (.ico) escalado a 256x256
         shell: bash
         run: |
           mkdir -p build dist
@@ -165,7 +165,7 @@ jobs:
           elif [ -f "assets/icon.png" ]; then cp assets/icon.png icon.png || true; cp assets/icon.png build/icon.png || true; cp assets/icon.png dist/icon.png || true;
           elif [ -f "src/assets/icon.png" ]; then cp src/assets/icon.png icon.png || true; cp src/assets/icon.png build/icon.png || true; cp src/assets/icon.png dist/icon.png || true; fi
           pip install Pillow || true
-          python -c "from PIL import Image; import os; [ (img.save('icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), img.save('build/icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), img.save('dist/icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), print('Icono .ico generado y verificado correctamente.')) for img in [Image.open('icon.png')] ] if os.path.exists('icon.png') else print('ADVERTENCIA: No se encontró icon.png en el repositorio. Se compilará con el ícono por defecto.')" || true
+          python -c "from PIL import Image; import os; [ (img.save('icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), img.save('build/icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), img.save('dist/icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]), print('Icono .ico 256x256 generado con éxito.')) for img in [Image.open('icon.png').convert('RGBA').resize((256, 256), Image.Resampling.LANCZOS)] ] if os.path.exists('icon.png') else print('ADVERTENCIA: No se encontró icon.png en el repositorio. Se compilará con el ícono por defecto.')" || true
 
       - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         shell: bash
