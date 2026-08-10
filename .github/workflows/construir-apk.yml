@@ -153,16 +153,18 @@ jobs:
       - name: 📦 Instalar dependencias web
         run: npm install --legacy-peer-deps
 
-      - name: 🛠️ Asegurar herramientas de Escritorio y conversor de íconos
-        run: npm install electron electron-builder png-to-ico --save-dev --legacy-peer-deps
+      - name: 🛠️ Asegurar herramientas de Escritorio
+        run: npm install electron electron-builder --save-dev --legacy-peer-deps
 
-      - name: 🎨 Convertir icon.png a formato Windows (.ico) binario puro
+      - name: 🎨 Convertir icon.png a formato Windows (.ico) con Python Pillow
         shell: bash
         run: |
-          mkdir -p build dist
-          cp icon.png build/icon.png || true
+          pip install Pillow
+          python -c "from PIL import Image; import os; img = Image.open('icon.png'); img.save('icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]); os.makedirs('build', exist_ok=True); img.save('build/icon.ico', format='ICO', sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)]); print('Icono .ico generado y verificado correctamente.')"
+          mkdir -p dist
           cp icon.png dist/icon.png || true
-          node -e "const fs = require('fs'); const mod = require('png-to-ico'); const converter = typeof mod === 'function' ? mod : mod.default; if (fs.existsSync('icon.png')) { converter('icon.png').then(buf => { fs.writeFileSync('icon.ico', buf); fs.writeFileSync('build/icon.ico', buf); fs.writeFileSync('dist/icon.ico', buf); console.log('Icono .ico generado con éxito.'); }).catch(err => console.error(err)); }" || true
+          cp icon.ico dist/icon.ico || true
+          ls -la icon.ico build/icon.ico
 
       - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         shell: bash
@@ -252,6 +254,7 @@ jobs:
       - name: ⚙️ Blindar package.json para obligar a Windows y NSIS a usar icon.ico
         run: |
           npm pkg set main="electron-main.cjs"
+          npm pkg set build.directories.buildResources="build"
           npm pkg set build.win.icon="icon.ico"
           npm pkg set build.nsis.installerIcon="icon.ico"
           npm pkg set build.nsis.uninstallerIcon="icon.ico"
@@ -389,6 +392,7 @@ jobs:
       - name: ⚙️ Blindar package.json para usar icon.png en macOS
         run: |
           npm pkg set main="electron-main.cjs"
+          npm pkg set build.directories.buildResources="build"
           npm pkg set build.win.icon="icon.ico"
           npm pkg set build.mac.icon="icon.png"
           npm pkg set build.files.0="dist/**/*"
