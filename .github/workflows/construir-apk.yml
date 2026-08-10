@@ -162,7 +162,7 @@ jobs:
           mkdir -p build dist
           cp icon.png build/icon.png || true
           cp icon.png dist/icon.png || true
-          node -e "const fs = require('fs'); const mod = require('png-to-ico'); const converter = typeof mod === 'function' ? mod : mod.default; if (fs.existsSync('icon.png')) { converter('icon.png').then(buf => { fs.mkdirSync('build', {recursive:true}); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('icon.ico', buf); fs.writeFileSync('build/icon.ico', buf); fs.writeFileSync('dist/icon.ico', buf); console.log('Icono .ico generado con éxito.'); }).catch(err => console.error(err)); }" || true
+          node -e "const fs = require('fs'); const mod = require('png-to-ico'); const converter = typeof mod === 'function' ? mod : mod.default; if (fs.existsSync('icon.png')) { converter('icon.png').then(buf => { fs.writeFileSync('icon.ico', buf); fs.writeFileSync('build/icon.ico', buf); fs.writeFileSync('dist/icon.ico', buf); console.log('Icono .ico generado con éxito.'); }).catch(err => console.error(err)); }" || true
 
       - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
         shell: bash
@@ -249,12 +249,14 @@ jobs:
           });
           EOF
 
-      - name: ⚙️ Blindar package.json para obligar a Windows a usar icon.ico
+      - name: ⚙️ Blindar package.json para obligar a Windows y NSIS a usar icon.ico
         run: |
           npm pkg set main="electron-main.cjs"
-          npm pkg set build.directories.buildResources="build"
-          npm pkg set build.win.icon="build/icon.ico"
-          npm pkg set build.mac.icon="build/icon.png"
+          npm pkg set build.win.icon="icon.ico"
+          npm pkg set build.nsis.installerIcon="icon.ico"
+          npm pkg set build.nsis.uninstallerIcon="icon.ico"
+          npm pkg set build.nsis.installerHeaderIcon="icon.ico"
+          npm pkg set build.mac.icon="icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
@@ -300,9 +302,8 @@ jobs:
 
       - name: 🎨 Preparar carpeta oficial build/ con ícono de INTECA
         run: |
-          mkdir -p build
+          mkdir -p build dist
           cp icon.png build/icon.png || true
-          mkdir -p dist
           cp icon.png dist/icon.png || true
 
       - name: 📄 Auto-crear servidor interno en Electron blindado con ícono de INTECA
@@ -388,9 +389,8 @@ jobs:
       - name: ⚙️ Blindar package.json para usar icon.png en macOS
         run: |
           npm pkg set main="electron-main.cjs"
-          npm pkg set build.directories.buildResources="build"
-          npm pkg set build.win.icon="build/icon.ico"
-          npm pkg set build.mac.icon="build/icon.png"
+          npm pkg set build.win.icon="icon.ico"
+          npm pkg set build.mac.icon="icon.png"
           npm pkg set build.files.0="dist/**/*"
           npm pkg set build.files.1="electron-main.cjs"
           npm pkg set build.files.2="package.json"
