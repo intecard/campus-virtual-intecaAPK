@@ -61,8 +61,6 @@ export default function App() {
             let profile = await getUserProfile(firebaseUser.uid);
             
             if (!profile) {
-              // 1. Si no existe, lo creamos y le damos su primer día de racha
-              // 🛡️ FIX: Usamos "as any" para que TypeScript no bloquee la racha
               profile = await createUserProfile(firebaseUser.uid, {
                 name: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "Estudiante INTECA",
                 email: firebaseUser.email || "",
@@ -72,7 +70,6 @@ export default function App() {
                 lastLoginTimestamp: Date.now()
               } as any); 
             } else {
-              // 2. LÓGICA DE RACHA DE ESTUDIO (STREAK ENGINE 100% REAL)
               const today = new Date();
               today.setHours(0, 0, 0, 0); 
 
@@ -96,7 +93,6 @@ export default function App() {
               }
 
               if (needsUpdate) {
-                // 🛡️ FIX: Usamos "as any" aquí también
                 await updateUserProfileInDB(firebaseUser.uid, {
                   studyStreak: currentStreak,
                   lastLoginTimestamp: Date.now()
@@ -107,6 +103,13 @@ export default function App() {
             }
             
             setCurrentUser(profile);
+
+            // 🔥 SENSOR WHATSAPP: Si la URL trae un parámetro de sala (?room=farma101),
+            // abrimos de inmediato la pestaña de Aula Virtual en lugar de Dashboard.
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("room")) {
+              setActiveTab("classroom");
+            }
           } catch (err) {
             console.error("Error retrieving user profile from Firestore:", err);
           }

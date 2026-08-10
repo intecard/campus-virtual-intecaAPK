@@ -15,7 +15,8 @@ import {
   Disc,
   StopCircle,
   FileVideo,
-  CheckCircle2
+  CheckCircle2,
+  Share2
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -40,6 +41,12 @@ interface VirtualClassroomProps {
 }
 
 export default function VirtualClassroom({ currentUser }: VirtualClassroomProps) {
+  // ==========================================
+  // BLINDAJE DE ROL (100% INMUNE A MAYÚSCULAS/ESPACIOS)
+  // ==========================================
+  const safeRole = String(currentUser?.role || '').toLowerCase().trim();
+  const isHostOrAdmin = safeRole === 'admin' || safeRole === 'teacher';
+
   // ==========================================
   // ESTADOS DE LA SALA (LOBBY vs EN LLAMADA)
   // ==========================================
@@ -100,8 +107,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
       snapshot.forEach(doc => {
         const data = doc.data();
-        // Si no hemos visto a este creador de sala todavía, lo agregamos.
-        // Como viene ordenado del más reciente al más viejo, siempre guardará la sala real y ocultará las "fantasmas".
         if (!seenHosts.has(data.hostName)) {
           seenHosts.add(data.hostName);
           classes.push({ id: doc.id, ...data });
@@ -168,6 +173,32 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     setIsInRoom(true);
   };
 
+  // ==========================================
+  // AUTO-INGRESO DESDE LINK DIRECTO (?room=CODIGO)
+  // ==========================================
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    if (roomParam && !isInRoom) {
+      const cleanCode = roomParam.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (cleanCode) {
+        triggerPermissionsAndJoin(cleanCode);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+  }, []);
+
+  // ==========================================
+  // COMPARTIR ENLACE POR WHATSAPP
+  // ==========================================
+  const shareOnWhatsApp = (code: string, hostName?: string) => {
+    const joinUrl = `${window.location.origin}/?room=${code}`;
+    const hostText = hostName ? ` con el profesor *${hostName}*` : '';
+    const message = `¡Hola! Te invito a unirte a la clase en vivo${hostText} de *INTECA Campus Virtual*.\n\n👉 *Entra directo a la videollamada aquí:*\n${joinUrl}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   const joinRoom = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const code = roomCode.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -181,8 +212,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const createNewRoom = async () => {
     const newCode = Math.random().toString(36).substring(2, 8);
     
-    // Guardamos la sala usando el nombre del profesor como ID.
-    if (currentUser.role === 'admin' || currentUser.role === 'teacher') {
+    if (isHostOrAdmin) {
       try {
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
         await setDoc(doc(db, "active_classes", hostDocId), {
@@ -199,14 +229,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const leaveRoom = () => {
-    const isHost = currentUser.role === 'admin' || currentUser.role === 'teacher';
-    const confirmMsg = isHost 
+    const confirmMsg = isHostOrAdmin 
       ? "¿Seguro que deseas FINALIZAR la clase para todos los participantes?" 
       : "¿Seguro que deseas salir de la clase?";
 
     if (window.confirm(confirmMsg)) {
-      if (isHost) {
-        // Notificar al chat que se cierra la sala
+      if (isHostOrAdmin) {
         addDoc(collection(db, `class_chat_${roomCode}`), {
           senderName: "Sistema",
           senderRole: "system",
@@ -215,7 +243,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           timestamp: serverTimestamp()
         }).catch((e) => console.error("Error cerrando sala:", e));
         
-        // Eliminamos la sala buscando por el nombre del creador
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
         deleteDoc(doc(db, "active_classes", hostDocId)).catch(e => console.error("Error eliminando sala del radar:", e));
       }
@@ -467,16 +494,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // LÓGICA DE FILTRADO PARA ESTUDIANTES INSCRITOS
   // ==========================================
   const visibleClasses = activeLiveClasses.filter(liveClass => {
-    // Si eres administrador o profesor, ves todas las salas por defecto para poder monitorear
-    if (currentUser.role === 'admin' || currentUser.role === 'teacher') return true;
-    
-    // Si el estudiante NO tiene profesores asignados, no ve ningún botón
+    if (isHostOrAdmin) return true;
     if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
-
-    // Solo mostramos el botón si el nombre del facilitador que creó la sala está en la lista del estudiante
     return currentUser.assignedTeachers.includes(liveClass.hostName); 
   });
-
 
   // ==========================================
   // RENDER 1: LOBBY
@@ -492,7 +513,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <h1 className="text-2xl font-display font-bold text-slate-900 mt-1">Aula Virtual INTECA Live</h1>
         </div>
 
-        <div className={`grid grid-cols-1 gap-6 ${(currentUser.role === 'admin' || currentUser.role === 'teacher') ? 'md:grid-cols-2' : 'max-w-xl mx-auto'}`}>
+        <div className={`grid grid-cols-1 gap-6 ${isHostOrAdmin ? 'md:grid-cols-2' : 'max-w-xl mx-auto'}`}>
           <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm space-y-6">
             <div className="w-16 h-16 bg-sky-50 text-sky-500 rounded-2xl flex items-center justify-center mb-4 shrink-0">
               <Video className="w-8 h-8" />
@@ -524,12 +545,26 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                               <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
                             </div>
                           </div>
-                          <button
-                            onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
-                          >
-                            <Play className="w-4 h-4 fill-current" /> Entrar Directamente
-                          </button>
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            {isHostOrAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
+                                title="Enviar link directo por WhatsApp"
+                              >
+                                <Share2 className="w-4 h-4 shrink-0" />
+                                <span>Invitar por WhatsApp</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                            >
+                              <Play className="w-4 h-4 fill-current shrink-0" /> Entrar Directamente
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -568,9 +603,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+            {isHostOrAdmin && (
               <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100" : "pt-2"}>
                 <button
+                  type="button"
                   onClick={createNewRoom}
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
                 >
@@ -580,7 +616,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             )}
           </div>
 
-          {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+          {isHostOrAdmin && (
             <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-100 shadow-sm space-y-4 flex flex-col h-[450px]">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
@@ -615,8 +651,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         >
                           <Play className="w-3 h-3" /> Ver Grabación
                         </a>
-                        {(currentUser.role === 'admin' || currentUser.name === rec.uploadedBy) && (
+                        {(safeRole === 'admin' || currentUser.name === rec.uploadedBy) && (
                           <button
+                            type="button"
                             onClick={() => handleDeleteRecording(rec.id)}
                             className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
                             title="Eliminar grabación"
@@ -653,11 +690,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <h1 className="text-lg md:text-xl font-display font-bold text-white mt-0.5">Clase en Vivo</h1>
         </div>
         
-        <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold flex-1 md:flex-none text-center">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
+          <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
+          {isHostOrAdmin && (
+            <button
+              type="button"
+              onClick={() => shareOnWhatsApp(roomCode, currentUser.name)}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-2 shadow-md text-xs sm:text-sm shrink-0 border border-emerald-400"
+              title="Enviar link directo por WhatsApp"
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span>Invitar por WhatsApp</span>
+            </button>
+          )}
           <button
+            type="button"
             onClick={leaveRoom}
             className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-3 md:px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
           >
@@ -700,7 +749,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <Palette className="w-3.5 h-3.5" /> Pizarra
             </button>
             
-            {(currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+            {isHostOrAdmin && (
               <button
                 onClick={() => setActiveTab('recordings')}
                 className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
@@ -765,6 +814,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0">
                   <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider pl-2">Pizarra Local</span>
                   <button
+                    type="button"
                     onClick={clearCanvas}
                     className="text-[10px] bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-colors"
                   >
@@ -795,6 +845,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
                       <button
                         key={col}
+                        type="button"
                         onClick={() => setBrushColor(col)}
                         className={`w-6 h-6 rounded-full border-2 transition-all ${brushColor === col ? 'scale-110 border-slate-400 shadow-md' : 'border-transparent'}`}
                         style={{ backgroundColor: col }}
@@ -816,7 +867,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
-            {activeTab === 'recordings' && (currentUser.role === 'admin' || currentUser.role === 'teacher') && (
+            {activeTab === 'recordings' && isHostOrAdmin && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
                   <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
@@ -825,6 +876,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <div className="flex gap-2">
                     {!isRecording ? (
                       <button 
+                        type="button"
                         onClick={startRecording}
                         className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm"
                       >
@@ -832,6 +884,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                       </button>
                     ) : (
                       <button 
+                        type="button"
                         onClick={stopRecording}
                         className="flex-1 bg-slate-900 hover:bg-black text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all animate-pulse shadow-sm"
                       >
