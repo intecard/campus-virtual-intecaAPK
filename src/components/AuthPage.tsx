@@ -13,7 +13,15 @@ import {
 } from "firebase/auth";
 import { doc, setDoc, getDoc, collection, query, where, getDocs, deleteDoc } from "firebase/firestore";
 import { UserProfile, UserRole } from "../types";
-import { Loader2, AlertCircle, KeyRound } from "lucide-react";
+import { 
+  Loader2, 
+  AlertCircle, 
+  KeyRound, 
+  Monitor, 
+  Laptop, 
+  Smartphone, 
+  Download 
+} from "lucide-react";
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 
@@ -54,15 +62,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     const querySnapshot = await getDocs(q);
 
     if (!querySnapshot.empty) {
-      // ¡El admin ya había creado esta cuenta! Fusionamos los datos.
       const adminDoc = querySnapshot.docs[0];
       const adminData = adminDoc.data();
 
       const mergedProfile: UserProfile = {
-        id: user.uid, // Aseguramos que use el UID oficial de la Autenticación
+        id: user.uid,
         name: customName || user.displayName || adminData.name || "Usuario INTECA",
         email: emailLower,
-        role: adminData.role || assignedRoleFallback, // ¡MANTIENE EL ROL DEL ADMIN!
+        role: adminData.role || assignedRoleFallback,
         avatar: user.photoURL || adminData.avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${emailLower}`,
         academicId: adminData.academicId || `INTECA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
         joinedDate: adminData.joinedDate || new Date().toLocaleDateString('es-CO', { month: 'short', year: 'numeric' }),
@@ -72,10 +79,8 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         suspended: adminData.suspended || false
       };
 
-      // Guardamos el perfil fusionado en el UID correcto
       await setDoc(uidDocRef, mergedProfile);
 
-      // Eliminamos el documento temporal que creó el admin para no tener duplicados
       if (adminDoc.id !== user.uid) {
         await deleteDoc(doc(db, "users", adminDoc.id));
       }
@@ -154,7 +159,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
-        // Usamos el interceptor para crear o enlazar la cuenta
         const finalProfile = await linkOrGenerateProfile(
           userCredential.user, 
           "student", 
@@ -213,7 +217,6 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     try {
       let result;
 
-      // Detecta si es App Móvil Nativa (Android / iOS) o Escritorio/Web (Windows / Mac)
       if (Capacitor.isNativePlatform()) {
         GoogleAuth.initialize({
           clientId: '266892587219-mm3og84lqca9kakskks3jehlm7e01a3t.apps.googleusercontent.com',
@@ -231,14 +234,12 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         result = await signInWithCredential(auth, credential);
 
       } else {
-        // Modo Web y Programas de Escritorio (Windows / macOS via Electron)
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
         result = await signInWithPopup(auth, provider);
       }
 
       if (result && result.user) {
-        // En lugar de sobreescribir, usamos el interceptor inteligente
         const finalProfile = await linkOrGenerateProfile(result.user, "student");
         onAuthSuccess(finalProfile);
       }
@@ -265,6 +266,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
 
       <div className="w-full max-w-md space-y-8">
         
+        {/* ENCABEZADO OFICIAL INTECA */}
         <div className="flex items-center gap-4">
           <svg className="w-16 h-16" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M15,50 C15,22 35,10 50,10 C65,10 85,22 85,50" stroke="#10b981" strokeWidth="6" strokeLinecap="round" />
@@ -377,6 +379,79 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             </div>
           </>
         )}
+
+        {/* ==========================================
+            NUEVA SECCIÓN: DESCARGAS INSTITUCIONALES (4 PLATAFORMAS)
+            ========================================== */}
+        <div className="pt-6 border-t border-[#163554] space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Download className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Descarga la App Oficial</span>
+            </div>
+            <span className="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-md font-bold">v4.0-PRO</span>
+          </div>
+
+          {/* Cuadrícula responsiva de 4 columnas en PC / 2x2 en celular */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            {/* 1. Botón Windows (.EXE) */}
+            <a
+              href="https://github.com/intecard/campus-virtual-intecaAPK/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0d2136] border border-[#163554] hover:border-emerald-500/50 hover:bg-[#122b47] transition-all group text-center"
+              title="Descargar instalador para Windows (.EXE)"
+            >
+              <Monitor className="w-5 h-5 text-slate-400 group-hover:text-emerald-400 transition-colors mb-1" />
+              <span className="text-xs font-bold text-slate-200">Windows</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">.EXE</span>
+            </a>
+
+            {/* 2. Botón macOS (.DMG) */}
+            <a
+              href="https://github.com/intecard/campus-virtual-intecaAPK/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0d2136] border border-[#163554] hover:border-emerald-500/50 hover:bg-[#122b47] transition-all group text-center"
+              title="Descargar instalador para Mac (.DMG)"
+            >
+              <Laptop className="w-5 h-5 text-slate-400 group-hover:text-emerald-400 transition-colors mb-1" />
+              <span className="text-xs font-bold text-slate-200">macOS</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">.DMG</span>
+            </a>
+
+            {/* 3. Botón Android (.APK) */}
+            <a
+              href="https://github.com/intecard/campus-virtual-intecaAPK/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0d2136] border border-[#163554] hover:border-emerald-500/50 hover:bg-[#122b47] transition-all group text-center"
+              title="Descargar aplicación oficial para Android (.APK)"
+            >
+              <Smartphone className="w-5 h-5 text-slate-400 group-hover:text-emerald-400 transition-colors mb-1" />
+              <span className="text-xs font-bold text-slate-200">Android</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">.APK</span>
+            </a>
+
+            {/* 4. Botón iOS / iPhone (.IPA) */}
+            <a
+              href="https://github.com/intecard/campus-virtual-intecaAPK/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center justify-center p-3 rounded-xl bg-[#0d2136] border border-[#163554] hover:border-emerald-500/50 hover:bg-[#122b47] transition-all group text-center"
+              title="Descargar aplicación para iPhone / iPad (.IPA)"
+            >
+              <Smartphone className="w-5 h-5 text-slate-400 group-hover:text-emerald-400 transition-colors mb-1" />
+              <span className="text-xs font-bold text-slate-200">iOS</span>
+              <span className="text-[9px] font-mono text-slate-500 uppercase">.IPA</span>
+            </a>
+          </div>
+
+          <p className="text-[11px] text-slate-500 text-center leading-relaxed">
+            Acceso optimizado para telemedicina, clases en vivo HD y auditoría clínica en cualquier dispositivo.
+          </p>
+        </div>
+
       </div>
     </div>
   );
