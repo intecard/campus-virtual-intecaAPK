@@ -182,7 +182,7 @@ export default function App() {
         currentUser.email,
         currentUser.role,
         "PROFILE_UPDATE",
-        `Modificó datos personales en la configuración de su cuenta escolar.`
+        `Modificó datos personales en la configuración de su cuenta estudiantil.`
       );
 
       setCurrentUser((prev: UserProfile | null) => prev ? ({ ...prev, ...profileData }) : null);
@@ -219,7 +219,7 @@ export default function App() {
       <div id="auth-loading-splash" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-100 gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
         <div className="text-center">
-          <h2 className="text-sm font-bold tracking-wider text-white uppercase font-mono">Verificando Sesión Escolar</h2>
+          <h2 className="text-sm font-bold tracking-wider text-white uppercase font-mono">Verificando Sesión Estudiantil</h2>
           <p className="text-xs text-slate-400 mt-1">Negociación de credenciales seguras de INTECA...</p>
         </div>
       </div>

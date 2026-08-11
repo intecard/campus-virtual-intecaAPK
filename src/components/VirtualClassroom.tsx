@@ -103,7 +103,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     const q = query(collection(db, "active_classes"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const classes: any[] = [];
-      const seenHosts = new Set(); // <-- BLINDAJE: Memoria para no repetir profesores/admins
+      const seenHosts = new Set(); 
 
       snapshot.forEach(doc => {
         const data = doc.data();
@@ -136,7 +136,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       });
 
       if (roomClosed) {
-        alert("El profesor ha finalizado la clase. La sala ha sido cerrada para todos.");
+        alert("El facilitador ha finalizado la clase. La sala ha sido cerrada para todos.");
         if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
           mediaRecorderRef.current.stop();
           setIsRecording(false);
@@ -189,11 +189,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, []);
 
   // ==========================================
-  // COMPARTIR ENLACE POR WHATSAPP
+  // COMPARTIR ENLACE POR WHATSAPP (CORREGIDO A FACILITADOR)
   // ==========================================
   const shareOnWhatsApp = (code: string, hostName?: string) => {
     const joinUrl = `${window.location.origin}/?room=${code}`;
-    const hostText = hostName ? ` con el profesor *${hostName}*` : '';
+    const hostText = hostName ? ` con el facilitador *${hostName}*` : '';
     const message = `¡Hola! Te invito a unirte a la clase en vivo${hostText} de *INTECA Campus Virtual*.\n\n👉 *Entra directo a la videollamada aquí:*\n${joinUrl}`;
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
@@ -577,7 +577,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   </div>
                 )}
 
-                {/* FORMULARIO MANUAL INTACTO */}
+                {/* FORMULARIO MANUAL */}
                 <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
@@ -599,7 +599,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Transmitir una Clase</h2>
-                <p className="text-sm text-slate-500 mt-1">Como profesor titular, inicia una nueva sala en vivo instantánea. Tus alumnos la verán publicada en su panel de ingreso directo.</p>
+                <p className="text-sm text-slate-500 mt-1">Como facilitador titular, inicia una nueva sala en vivo instantánea. Tus alumnos la verán publicada en su panel de ingreso directo.</p>
               </div>
             )}
 
@@ -633,7 +633,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3">
                     <Tv className="w-12 h-12 text-slate-200" />
                     <p className="text-sm font-bold text-slate-600">No hay clases grabadas</p>
-                    <p className="text-xs text-center">Las clases guardadas por los profesores aparecerán aquí.</p>
+                    <p className="text-xs text-center">Las clases guardadas por los facilitadores aparecerán aquí.</p>
                   </div>
                 ) : (
                   recordings.map((rec) => (
