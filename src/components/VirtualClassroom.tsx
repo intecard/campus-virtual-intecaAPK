@@ -16,7 +16,11 @@ import {
   StopCircle,
   FileVideo,
   CheckCircle2,
-  Share2
+  Share2,
+  Calendar,
+  Clock,
+  Copy,
+  X
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -66,6 +70,15 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [activeLiveClasses, setActiveLiveClasses] = useState<any[]>([]);
 
   // ==========================================
+  // ESTADOS NUEVOS: PROGRAMACIÓN DE CLASES
+  // ==========================================
+  const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
+  const [isSchedulingModalOpen, setIsSchedulingModalOpen] = useState(false);
+  const [scheduleTitle, setScheduleTitle] = useState("");
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+
+  // ==========================================
   // ESTADOS DE GRABACIÓN Y SUBIDA DE VIDEO
   // ==========================================
   const [uploadingRecord, setUploadingRecord] = useState(false);
@@ -113,6 +126,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         }
       });
       setActiveLiveClasses(classes);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // NUEVO: Cargar Clases Programadas desde Firebase
+  useEffect(() => {
+    const q = query(collection(db, "scheduled_classes"), orderBy("timestamp", "asc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const scheduled: any[] = [];
+      snapshot.forEach(doc => {
+        scheduled.push({ id: doc.id, ...doc.data() });
+      });
+      setScheduledClasses(scheduled);
     });
     return () => unsubscribe();
   }, []);
@@ -226,6 +252,69 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
     
     triggerPermissionsAndJoin(newCode);
+  };
+
+  // ==========================================
+  // FUNCIONES NUEVAS: AGENDA DE CLASES
+  // ==========================================
+  const startScheduledRoom = async (specificCode: string) => {
+    if (isHostOrAdmin) {
+      try {
+        const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
+        await setDoc(doc(db, "active_classes", hostDocId), {
+          roomCode: specificCode,
+          hostName: currentUser.name, 
+          createdAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.error("Error publicando la sala activa:", error);
+      }
+    }
+    triggerPermissionsAndJoin(specificCode);
+  };
+
+  const handleScheduleClass = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleTitle || !scheduleDate || !scheduleTime) return;
+
+    const newCode = Math.random().toString(36).substring(2, 8);
+    try {
+      await addDoc(collection(db, "scheduled_classes"), {
+        title: scheduleTitle,
+        date: scheduleDate,
+        time: scheduleTime,
+        roomCode: newCode,
+        hostName: currentUser.name,
+        timestamp: serverTimestamp()
+      });
+      setScheduleTitle("");
+      setScheduleDate("");
+      setScheduleTime("");
+      setIsSchedulingModalOpen(false);
+      alert("¡Taller programado exitosamente! Ya puedes compartir el enlace.");
+    } catch (error) {
+      console.error("Error programando la clase:", error);
+      alert("Hubo un error al programar la clase.");
+    }
+  };
+
+  const handleDeleteScheduledClass = async (id: string) => {
+    if (window.confirm("¿Estás seguro de cancelar y eliminar este taller programado?")) {
+      await deleteDoc(doc(db, "scheduled_classes", id));
+    }
+  };
+
+  const copyToClipboard = (code: string) => {
+    const joinUrl = `${window.location.origin}/?room=${code}`;
+    navigator.clipboard.writeText(joinUrl);
+    alert("¡Enlace copiado al portapapeles!");
+  };
+
+  const shareScheduledOnWhatsApp = (code: string, hostName: string, title: string, date: string, time: string) => {
+    const joinUrl = `${window.location.origin}/?room=${code}`;
+    const message = `📅 *¡Reserva la fecha!* Te invito a la clase programada de *INTECA Campus Virtual*.\n\n📚 *Tema:* ${title}\n👨‍🏫 *Facilitador:* ${hostName}\n🗓️ *Fecha:* ${date}\n⏰ *Hora:* ${time}\n\n👉 *Guarda este enlace para entrar el día de la clase:*\n${joinUrl}`;
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   const leaveRoom = () => {
@@ -499,12 +588,57 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return currentUser.assignedTeachers.includes(liveClass.hostName); 
   });
 
+  const visibleScheduledClasses = scheduledClasses.filter(schedClass => {
+    if (isHostOrAdmin) return true;
+    if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
+    return currentUser.assignedTeachers.includes(schedClass.hostName); 
+  });
+
   // ==========================================
   // RENDER 1: LOBBY
   // ==========================================
   if (!isInRoom) {
     return (
-      <div id="virtual-classroom-lobby" className="space-y-6 animate-in fade-in duration-500 pb-10">
+      <div id="virtual-classroom-lobby" className="space-y-6 animate-in fade-in duration-500 pb-10 relative">
+
+        {/* MODAL DE PROGRAMACIÓN DE CLASES */}
+        {isSchedulingModalOpen && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="bg-slate-900 p-5 flex justify-between items-center">
+                <h3 className="text-white font-bold flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-emerald-400" /> Programar Taller / Clase
+                </h3>
+                <button onClick={() => setIsSchedulingModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleScheduleClass} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Título del Taller</label>
+                  <input type="text" required value={scheduleTitle} onChange={e => setScheduleTitle(e.target.value)} placeholder="Ej. Taller Ley 87-01..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fecha</label>
+                    <input type="date" required value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora</label>
+                    <input type="time" required value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsSchedulingModalOpen(false)} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all shadow-md flex items-center justify-center gap-2">
+                    <Calendar className="w-4 h-4" /> Programar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         <div>
           <span className="text-xs font-mono font-bold text-rose-500 uppercase tracking-wider flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse"></span>
@@ -568,17 +702,61 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         </div>
                       ))}
                     </div>
-                    
-                    <div className="relative py-2 flex items-center">
-                      <div className="flex-grow border-t border-slate-100"></div>
-                      <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">O ingreso manual</span>
-                      <div className="flex-grow border-t border-slate-100"></div>
-                    </div>
                   </div>
                 )}
 
+                {/* RADAR DE CLASES PROGRAMADAS */}
+                {visibleScheduledClasses.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-sky-500" />
+                      Próximos Talleres Programados
+                    </h3>
+                    <div className="grid gap-3">
+                      {visibleScheduledClasses.map(schedClass => (
+                        <div key={schedClass.id} className="flex flex-col bg-slate-50 border border-slate-200 p-4 rounded-2xl gap-3">
+                          <div>
+                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{schedClass.title}</h4>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                              <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Calendar className="w-3.5 h-3.5 text-slate-400"/> {schedClass.date}</p>
+                              <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Clock className="w-3.5 h-3.5 text-slate-400"/> {schedClass.time}</p>
+                            </div>
+                            <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-wider">Facilitador: {schedClass.hostName}</p>
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                            <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                              <Copy className="w-3.5 h-3.5" /> Copiar Link
+                            </button>
+                            
+                            {isHostOrAdmin && (
+                              <>
+                                <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                                  <Share2 className="w-3.5 h-3.5" /> Enviar
+                                </button>
+                                <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                                  <Play className="w-3.5 h-3.5" /> Iniciar Taller
+                                </button>
+                                <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2 transition-colors" title="Cancelar Taller">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="relative py-2 flex items-center">
+                  <div className="flex-grow border-t border-slate-100"></div>
+                  <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">O ingreso manual</span>
+                  <div className="flex-grow border-t border-slate-100"></div>
+                </div>
+
                 {/* FORMULARIO MANUAL */}
-                <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
+                <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 && visibleScheduledClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
@@ -599,21 +777,113 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             ) : (
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Transmitir una Clase</h2>
-                <p className="text-sm text-slate-500 mt-1">Como facilitador titular, inicia una nueva sala en vivo instantánea. Tus alumnos la verán publicada en su panel de ingreso directo.</p>
+                <p className="text-sm text-slate-500 mt-1">Como facilitador titular, inicia una nueva sala en vivo instantánea, o agenda un taller futuro.</p>
               </div>
             )}
 
             {isHostOrAdmin && (
-              <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100" : "pt-2"}>
+              <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100 space-y-3" : "pt-2 space-y-3"}>
                 <button
                   type="button"
-                  onClick={createNewRoom}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
+                  onClick={() => createNewRoom()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
                 >
                   <Plus className="w-5 h-5" /> Iniciar Nueva Clase en Vivo
                 </button>
+                
+                <button
+                  type="button"
+                  onClick={() => setIsSchedulingModalOpen(true)}
+                  className="w-full bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Calendar className="w-5 h-5 text-slate-400" /> Programar un Taller Futuro
+                </button>
               </div>
             )}
+            
+            {/* RADAR DE CLASES ACTIVAS (Para Profesores) */}
+            {isHostOrAdmin && visibleClasses.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  Transmisiones en Vivo Ahora
+                </h3>
+                <div className="grid gap-3">
+                  {visibleClasses.map(liveClass => (
+                    <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Video className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
+                          <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
+                          title="Enviar link directo por WhatsApp"
+                        >
+                          <Share2 className="w-4 h-4 shrink-0" />
+                          <span>Invitar por WhatsApp</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                        >
+                          <Play className="w-4 h-4 fill-current shrink-0" /> Entrar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* RADAR DE CLASES PROGRAMADAS (Para Profesores) */}
+            {isHostOrAdmin && visibleScheduledClasses.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-sky-500" />
+                  Próximos Talleres Programados
+                </h3>
+                <div className="grid gap-3">
+                  {visibleScheduledClasses.map(schedClass => (
+                    <div key={schedClass.id} className="flex flex-col bg-slate-50 border border-slate-200 p-4 rounded-2xl gap-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 leading-snug">{schedClass.title}</h4>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                          <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Calendar className="w-3.5 h-3.5 text-slate-400"/> {schedClass.date}</p>
+                          <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Clock className="w-3.5 h-3.5 text-slate-400"/> {schedClass.time}</p>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-wider">Facilitador: {schedClass.hostName}</p>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Copy className="w-3.5 h-3.5" /> Copiar Link
+                        </button>
+                        
+                        <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Share2 className="w-3.5 h-3.5" /> Enviar
+                        </button>
+                        <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Play className="w-3.5 h-3.5" /> Iniciar Taller
+                        </button>
+                        <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2 transition-colors" title="Cancelar Taller">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
           </div>
 
           {isHostOrAdmin && (
