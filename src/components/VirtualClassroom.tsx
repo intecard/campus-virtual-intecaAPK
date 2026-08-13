@@ -20,7 +20,8 @@ import {
   Calendar,
   Clock,
   Copy,
-  X
+  X,
+  Type // NUEVO: Importamos el icono para el botón de texto
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -92,12 +93,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // ==========================================
-  // ESTADOS DE LA PIZARRA VIRTUAL TÁCTIL
+  // ESTADOS DE LA PIZARRA VIRTUAL TÁCTIL Y TEXTO
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState('#10b981');
   const [brushSize, setBrushSize] = useState(4);
+
+  // NUEVO: Estados para la herramienta de texto con teclado
+  const [whiteboardTool, setWhiteboardTool] = useState<'pen' | 'text'>('pen');
+  const [textCursor, setTextCursor] = useState({ x: 0, y: 0, visible: false });
+  const [textInputValue, setTextInputValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Cargar Grabaciones
   useEffect(() => {
@@ -111,7 +118,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // NUEVO: Radar de Clases en Vivo con Escudo Anti-Duplicados
+  // Radar de Clases en Vivo con Escudo Anti-Duplicados
   useEffect(() => {
     const q = query(collection(db, "active_classes"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -130,7 +137,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // NUEVO: Cargar Clases Programadas desde Firebase
+  // Cargar Clases Programadas desde Firebase
   useEffect(() => {
     const q = query(collection(db, "scheduled_classes"), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -495,7 +502,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // FUNCIONES DE PIZARRA
+  // FUNCIONES DE PIZARRA CON SOPORTE PARA TEXTO
   // ==========================================
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
@@ -523,6 +530,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Si la herramienta no es el lápiz, evitamos dibujar
+    if (whiteboardTool !== 'pen') return;
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -535,7 +545,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (!isDrawing || whiteboardTool !== 'pen') return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -545,6 +555,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const startDrawingTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (whiteboardTool !== 'pen') return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -558,7 +569,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const drawTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (!isDrawing || whiteboardTool !== 'pen') return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -569,6 +580,45 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const stopDrawing = () => setIsDrawing(false);
+
+  // NUEVO: Funciones para manejar la herramienta de texto en la pizarra
+  const handleCanvasContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Si la herramienta es de texto y hacemos clic sobre el contenedor
+    if (whiteboardTool === 'text') {
+      const container = e.currentTarget;
+      const rect = container.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      setTextCursor({ x: clickX, y: clickY, visible: true });
+      setTextInputValue("");
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  };
+
+  const finalizeText = () => {
+    if (textInputValue.trim() && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Necesitamos mapear las coordenadas visuales CSS de vuelta a la resolución original del canvas (800x800)
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const drawX = textCursor.x * scaleX;
+        const drawY = textCursor.y * scaleY;
+
+        ctx.textBaseline = 'top'; // Alinea la parte de arriba de la letra con nuestro punto
+        ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
+        ctx.fillStyle = brushColor;
+        ctx.fillText(textInputValue, drawX, drawY);
+      }
+    }
+    // Ocultar input tras estampar
+    setTextCursor(prev => ({ ...prev, visible: false }));
+    setTextInputValue("");
+  };
 
   const clearCanvas = () => {
     const canvas = canvasRef.current;
@@ -946,7 +996,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
-  const jitsiConfigParams = `&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+  // 🛡️ NUEVO BLINDAJE JITSI: Fuerza a usar la web y bloquea el popup de descargar la app
+  const jitsiConfigParams = `&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -991,7 +1042,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"&config.disableDeepLinking=true&config.prejoinPageEnabled=false${jitsiConfigParams}`}
+            src={`https://meet.jit.si/inteca_campus_${roomCode}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
@@ -1092,7 +1143,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   </button>
                 </div>
                 
-                <div className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative">
+                <div 
+                  className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative"
+                  onClick={handleCanvasContainerClick}
+                >
                   <canvas
                     ref={canvasRef}
                     width={800}
@@ -1105,13 +1159,66 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     onTouchMove={drawTouch}
                     onTouchEnd={stopDrawing}
                     onTouchCancel={stopDrawing}
-                    className="cursor-crosshair w-full h-full touch-none"
+                    className={`w-full h-full touch-none ${whiteboardTool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`}
                     style={{ width: '100%', height: '100%' }}
                   />
+                  
+                  {/* NUEVO: Input de texto sobre la pizarra */}
+                  {textCursor.visible && (
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={textInputValue}
+                      onChange={(e) => setTextInputValue(e.target.value)}
+                      onBlur={finalizeText}
+                      onKeyDown={(e) => e.key === 'Enter' && finalizeText()}
+                      style={{
+                        position: 'absolute',
+                        left: textCursor.x,
+                        top: textCursor.y,
+                        color: brushColor,
+                        fontSize: `${Math.max(16, brushSize * 4)}px`,
+                        fontWeight: 'bold',
+                        fontFamily: 'sans-serif',
+                        background: 'transparent',
+                        border: '1px dashed #94a3b8',
+                        outline: 'none',
+                        padding: 0,
+                        margin: 0,
+                        minWidth: '200px',
+                        zIndex: 20
+                      }}
+                      placeholder="Escribe aquí..."
+                    />
+                  )}
                 </div>
 
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 items-center">
+                    
+                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
+                    <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWhiteboardTool('pen');
+                          setTextCursor(prev => ({ ...prev, visible: false }));
+                        }}
+                        className={`p-1.5 rounded-md transition-all ${whiteboardTool === 'pen' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Lápiz"
+                      >
+                        <Palette className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWhiteboardTool('text')}
+                        className={`p-1.5 rounded-md transition-all ${whiteboardTool === 'text' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Escribir Texto"
+                      >
+                        <Type className="w-4 h-4" />
+                      </button>
+                    </div>
+
                     {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
                       <button
                         key={col}
