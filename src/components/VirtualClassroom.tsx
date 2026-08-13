@@ -150,7 +150,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // Cargar Chat de la Sala
+  // Cargar Chat de la Sala (CON LLAVE MAESTRA DE ADMINISTRADOR)
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
@@ -158,26 +158,44 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs: any[] = [];
       let roomClosed = false;
+      let closedDocsIds: string[] = []; // Guardamos los IDs de los candados para destruirlos
 
       snapshot.forEach(doc => {
         const data = doc.data();
         if (data.text === "ROOM_CLOSED_BY_HOST" && data.senderRole === "system") {
           roomClosed = true;
+          closedDocsIds.push(doc.id);
         } else {
           msgs.push({ id: doc.id, ...data });
         }
       });
 
       if (roomClosed) {
-        alert("El facilitador ha finalizado la clase. La sala ha sido cerrada para todos.");
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          mediaRecorderRef.current.stop();
-          setIsRecording(false);
+        if (isHostOrAdmin) {
+          // 🪄 MAGIA: El profe entró a una sala cerrada. Destruimos los candados y la reabrimos silenciosamente.
+          closedDocsIds.forEach(id => {
+            deleteDoc(doc(db, `class_chat_${roomCode}`, id)).catch(() => {});
+          });
+          // Volvemos a colocar la sala en el radar activo
+          const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
+          setDoc(doc(db, "active_classes", hostDocId), {
+            roomCode: roomCode,
+            hostName: currentUser.name, 
+            createdAt: serverTimestamp()
+          }).catch(() => {});
+          // NO hacemos return. Permitimos que el profe se quede y reviva la clase.
+        } else {
+          // Es un estudiante. Le mostramos el mensaje y lo expulsamos.
+          alert("El facilitador ha finalizado la clase. La sala ha sido cerrada para todos.");
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+          }
+          setIsInRoom(false);
+          setRoomCode("");
+          setChatMessages([]);
+          return; 
         }
-        setIsInRoom(false);
-        setRoomCode("");
-        setChatMessages([]);
-        return; 
       }
 
       setChatMessages(msgs);
@@ -703,7 +721,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <Video className="w-8 h-8" />
             </div>
 
-            {/* UNIFICADO: Encabezados y botones de control para evitar duplicados */}
             <div>
               <h2 className="text-xl font-bold text-slate-900">
                 {isHostOrAdmin ? 'Administrar y Transmitir Clases' : 'Ingresar a una Clase'}
@@ -1109,7 +1126,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2 items-center">
                     
-                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
                       <button
                         type="button"
