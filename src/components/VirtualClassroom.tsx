@@ -432,7 +432,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // SUBIDA DE VIDEO A CLOUDINARY
+  // NUEVO: SUBIDA DE VIDEO A CLOUDINARY
   // ==========================================
   const handleUploadRecording = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -999,7 +999,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
 
-  // Mantenemos tu configuración, quitando disableThirdPartyRequests que causaba el quiebre
   const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
@@ -1045,7 +1044,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-popups allow-forms" : undefined}
+            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms" : undefined}
             src={`https://meet.jit.si/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
