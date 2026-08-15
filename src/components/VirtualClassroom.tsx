@@ -530,7 +530,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Si la herramienta no es el lápiz, evitamos dibujar
     if (whiteboardTool !== 'pen') return;
 
     const canvas = canvasRef.current;
@@ -581,9 +580,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const stopDrawing = () => setIsDrawing(false);
 
-  // NUEVO: Funciones para manejar la herramienta de texto en la pizarra
   const handleCanvasContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Si la herramienta es de texto y hacemos clic sobre el contenedor
     if (whiteboardTool === 'text') {
       const container = e.currentTarget;
       const rect = container.getBoundingClientRect();
@@ -601,7 +598,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Necesitamos mapear las coordenadas visuales CSS de vuelta a la resolución original del canvas (800x800)
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -609,13 +605,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const drawX = textCursor.x * scaleX;
         const drawY = textCursor.y * scaleY;
 
-        ctx.textBaseline = 'top'; // Alinea la parte de arriba de la letra con nuestro punto
+        ctx.textBaseline = 'top';
         ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
         ctx.fillStyle = brushColor;
         ctx.fillText(textInputValue, drawX, drawY);
       }
     }
-    // Ocultar input tras estampar
     setTextCursor(prev => ({ ...prev, visible: false }));
     setTextInputValue("");
   };
@@ -998,8 +993,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
+  
+  // Determinamos los parámetros del enlace. Agregamos lang=es SIEMPRE para forzar español.
+  const queryParams = isDesktopApp ? '?web=1&lang=es' : '?lang=es';
 
-  const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+  // Eliminamos disableThirdPartyRequests y agregamos el idioma por defecto a nivel de interfaz
+  const jitsiConfigParams = `&config.defaultLanguage=%22es%22&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -1044,8 +1043,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms" : undefined}
-            src={`https://meet.jit.si/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
+            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals" : undefined}
+            src={`https://meet.jit.si/inteca_campus_${roomCode}${queryParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
@@ -1166,7 +1165,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     style={{ width: '100%', height: '100%' }}
                   />
                   
-                  {/* NUEVO: Input de texto sobre la pizarra */}
                   {textCursor.visible && (
                     <input
                       ref={inputRef}
@@ -1199,7 +1197,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2 items-center">
                     
-                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
                       <button
                         type="button"
