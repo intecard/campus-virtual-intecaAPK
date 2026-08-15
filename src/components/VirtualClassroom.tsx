@@ -994,10 +994,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
   
-  // Determinamos los parámetros del enlace. Agregamos lang=es SIEMPRE para forzar español.
+  // En Windows/Mac forzamos modo web para evitar popup. En móvil lo dejamos intacto (sin web=1).
+  // Y siempre aplicamos el idioma en español.
   const queryParams = isDesktopApp ? '?web=1&lang=es' : '?lang=es';
 
-  // Eliminamos disableThirdPartyRequests y agregamos el idioma por defecto a nivel de interfaz
   const jitsiConfigParams = `&config.defaultLanguage=%22es%22&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
@@ -1165,6 +1165,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     style={{ width: '100%', height: '100%' }}
                   />
                   
+                  {/* NUEVO: Input de texto sobre la pizarra */}
                   {textCursor.visible && (
                     <input
                       ref={inputRef}
@@ -1197,6 +1198,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2 items-center">
                     
+                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
                       <button
                         type="button"
