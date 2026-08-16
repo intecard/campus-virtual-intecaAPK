@@ -991,12 +991,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
-  // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
+  // 🛡️ DETECCIÓN PARA SANDBOX (Windows/Mac)
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
   
-  // En Windows/Mac forzamos modo web para evitar popup. En móvil lo dejamos intacto (sin web=1).
-  // Y siempre aplicamos el idioma en español.
-  const queryParams = isDesktopApp ? '?web=1&lang=es' : '?lang=es';
+  // 🔥 MAGIA UNIVERSAL: ?web=1 obliga a Jitsi a quedarse en la web (iframe) 
+  // para los 4 sistemas (Android, iOS, Windows, Mac). lang=es fuerza español.
+  const queryParams = '?web=1&lang=es';
 
   const jitsiConfigParams = `&config.defaultLanguage=%22es%22&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
