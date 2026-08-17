@@ -989,8 +989,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA
+  // RENDER 2: SALA ACTIVA (BLINDAJE UNIVERSAL)
   // ==========================================
+  
   // 🛡️ DETECCIÓN PARA SANDBOX (Windows/Mac)
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
   
@@ -1043,6 +1044,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
+            // 🛡️ MURO DE CONTENCIÓN UNIVERSAL: Al aplicarlo a PC y no incluir 'allow-top-navigation',
+            // es físicamente imposible que Jitsi te expulse al navegador externo. 
+            // En móviles lo dejamos como undefined para que no se pierdan los permisos de cámara nativos.
             sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals" : undefined}
             src={`https://meet.jit.si/inteca_campus_${roomCode}${queryParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
