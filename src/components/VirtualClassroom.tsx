@@ -991,11 +991,15 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
+  // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
+  const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
   
-  // Mantenemos ?web=1 para forzar la versión web y lang=es para el español
-  const queryParams = '?web=1&lang=es';
-  
-  const jitsiConfigParams = `&config.defaultLanguage=%22es%22&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+  // 🔙 RESTAURADO EXACTAMENTE COMO ESTABA: 
+  // Desktop usa ?web=1 para forzar la vista de PC. Móvil NO usa ?web=1 para no romper la app.
+  // Solo inyectamos el idioma ?lang=es a ambos.
+  const queryParams = isDesktopApp ? '?web=1&lang=es' : '?lang=es';
+
+  const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -1040,6 +1044,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
+            // 🛡️ RESTAURADO: Sandbox SOLO para PC con los popups permitidos. Móvil se queda en 'undefined' (libre).
+            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals" : undefined}
             src={`https://meet.jit.si/inteca_campus_${roomCode}${queryParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
