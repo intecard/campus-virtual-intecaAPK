@@ -21,7 +21,7 @@ import {
   Clock,
   Copy,
   X,
-  Type // NUEVO: Importamos el icono para el botón de texto
+  Type
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -67,7 +67,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
   
-  // NUEVO: Estado para el Radar de Clases Activas
+  // ESTADO PARA EL RADAR DE CLASES ACTIVAS
   const [activeLiveClasses, setActiveLiveClasses] = useState<any[]>([]);
 
   // ==========================================
@@ -99,8 +99,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState('#10b981');
   const [brushSize, setBrushSize] = useState(4);
-
-  // NUEVO: Estados para la herramienta de texto con teclado
   const [whiteboardTool, setWhiteboardTool] = useState<'pen' | 'text'>('pen');
   const [textCursor, setTextCursor] = useState({ x: 0, y: 0, visible: false });
   const [textInputValue, setTextInputValue] = useState("");
@@ -137,7 +135,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
-  // Cargar Clases Programadas desde Firebase
+  // Cargar Clases Programadas
   useEffect(() => {
     const q = query(collection(db, "scheduled_classes"), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -184,16 +182,13 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }, (error) => {
       console.error("Error en Firestore al intentar leer el chat:", error);
-      if (error.code === 'permission-denied') {
-        console.warn("ALERTA DE SEGURIDAD: Los estudiantes no tienen permiso en Firebase para leer/escribir en el chat.");
-      }
     });
     
     return () => unsubscribe();
   }, [isInRoom, roomCode]);
 
   // ==========================================
-  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA
+  // 🛡️ PERMISOS MÓVILES Y CONTROL DE SALA
   // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
@@ -206,9 +201,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     setIsInRoom(true);
   };
 
-  // ==========================================
-  // AUTO-INGRESO DESDE LINK DIRECTO (?room=CODIGO)
-  // ==========================================
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -221,9 +213,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
   }, []);
 
-  // ==========================================
-  // COMPARTIR ENLACE POR WHATSAPP (CORREGIDO A FACILITADOR)
-  // ==========================================
   const shareOnWhatsApp = (code: string, hostName?: string) => {
     const joinUrl = `${window.location.origin}/?room=${code}`;
     const hostText = hostName ? ` con el facilitador *${hostName}*` : '';
@@ -261,9 +250,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     triggerPermissionsAndJoin(newCode);
   };
 
-  // ==========================================
-  // FUNCIONES NUEVAS: AGENDA DE CLASES
-  // ==========================================
   const startScheduledRoom = async (specificCode: string) => {
     if (isHostOrAdmin) {
       try {
@@ -432,7 +418,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   // ==========================================
-  // NUEVO: SUBIDA DE VIDEO A CLOUDINARY
+  // SUBIDA DE VIDEO A CLOUDINARY
   // ==========================================
   const handleUploadRecording = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -624,9 +610,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  // ==========================================
-  // LÓGICA DE FILTRADO PARA ESTUDIANTES INSCRITOS
-  // ==========================================
   const visibleClasses = activeLiveClasses.filter(liveClass => {
     if (isHostOrAdmin) return true;
     if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
@@ -991,15 +974,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // ==========================================
   // RENDER 2: SALA ACTIVA
   // ==========================================
-  // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
-  const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
   
-  // 🔙 RESTAURADO EXACTAMENTE COMO ESTABA: 
-  // Desktop usa ?web=1 para forzar la vista de PC. Móvil NO usa ?web=1 para no romper la app.
-  // Solo inyectamos el idioma ?lang=es a ambos.
-  const queryParams = isDesktopApp ? '?web=1&lang=es' : '?lang=es';
-
-  const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+  // 🚀 REEMPLAZO DE MOTOR COMERCIAL (meet.jit.si) POR SERVIDOR OPEN SOURCE (meet.ffmuc.net)
+  // Este servidor utiliza la misma tecnología sin forzar a los anfitriones a iniciar sesión con Google.
+  // Como resultado, Android/iOS ya NO te expulsarán hacia Chrome/Safari. Todo queda 100% en tu app.
+  
+  // BigBlueButton Nota: Cuando estés listo para configurar tu servidor BBB, reemplazarás esta URL 
+  // por la URL generada desde tu backend con la clave SHA256. La arquitectura ya está preparada.
+  const videoServerBaseUrl = "https://meet.ffmuc.net/inteca_campus_";
+  
+  // Forzamos el idioma español y evitamos cualquier enlace profundo
+  const queryParams = '?lang=es';
+  const webrtcConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
 
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
@@ -1044,9 +1030,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            // 🛡️ RESTAURADO: Sandbox SOLO para PC con los popups permitidos. Móvil se queda en 'undefined' (libre).
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals" : undefined}
-            src={`https://meet.jit.si/inteca_campus_${roomCode}${queryParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
+            // 🛡️ BARRERA ELIMINADA: Sin sandbox, el WebView móvil y de PC funciona al 100% nativo.
+            // Como cambiamos el servidor a uno libre (ffmuc.net), no habrá ventanas forzadas de Google.
+            src={`${videoServerBaseUrl}${roomCode}${queryParams}${webrtcConfigParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
@@ -1167,7 +1153,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     style={{ width: '100%', height: '100%' }}
                   />
                   
-                  {/* NUEVO: Input de texto sobre la pizarra */}
                   {textCursor.visible && (
                     <input
                       ref={inputRef}
@@ -1200,7 +1185,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2 items-center">
                     
-                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
                       <button
                         type="button"
