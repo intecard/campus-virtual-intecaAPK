@@ -992,9 +992,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   // RENDER 2: SALA ACTIVA (BLINDAJE UNIVERSAL)
   // ==========================================
   
-  // 🛡️ DETECCIÓN PARA SANDBOX (Windows/Mac)
-  const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
-  
   // 🔥 MAGIA UNIVERSAL: ?web=1 obliga a Jitsi a quedarse en la web (iframe) 
   // para los 4 sistemas (Android, iOS, Windows, Mac). lang=es fuerza español.
   const queryParams = '?web=1&lang=es';
@@ -1044,10 +1041,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            // 🛡️ MURO DE CONTENCIÓN UNIVERSAL: Al aplicarlo a PC y no incluir 'allow-top-navigation',
-            // es físicamente imposible que Jitsi te expulse al navegador externo. 
-            // En móviles lo dejamos como undefined para que no se pierdan los permisos de cámara nativos.
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-modals" : undefined}
+            // 🛡️ MURO DE CONTENCIÓN UNIVERSAL (AHORA PARA TODOS): 
+            // Al no incluir 'allow-top-navigation', impedimos que Jitsi secuestre la app móvil.
+            // allow-popups permite que el login de Google se abra en una ventana secundaria controlable.
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
             src={`https://meet.jit.si/inteca_campus_${roomCode}${queryParams}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
