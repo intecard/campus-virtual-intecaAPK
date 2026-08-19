@@ -994,9 +994,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA
+  // RENDER 2: SALA ACTIVA (NUEVO SERVIDOR OPEN SOURCE SIN ANUNCIOS)
   // ==========================================
-  // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
   const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
 
   const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
@@ -1044,12 +1043,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           
           {/* ========================================================= */}
-          {/* AQUÍ ESTÁ LA CORRECCIÓN: SE AGREGARON LOS PERMISOS POPUPS */}
+          {/* AQUÍ ESTÁ LA CORRECCIÓN: CAMBIO DE SERVIDOR A UNO LIBRE   */}
           {/* ========================================================= */}
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen; popups"
             sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" : undefined}
-            src={`https://meet.jit.si/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
+            src={`https://meet.ffmuc.net/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
