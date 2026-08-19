@@ -30,8 +30,10 @@ jobs:
       - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
         run: npm pkg delete overrides
 
-      - name: 📦 Instalar dependencias web
-        run: npm install --legacy-peer-deps
+      - name: 📦 Instalar dependencias web (Blindado anti-caché)
+        run: |
+          npm cache clean --force
+          npm install --legacy-peer-deps
 
       - name: 🛠️ Asegurar Motor de Capacitor y Generador de Logos
         run: npm install @capacitor/cli @capacitor/android @capacitor/assets --legacy-peer-deps
@@ -93,8 +95,10 @@ jobs:
       - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
         run: npm pkg delete overrides
 
-      - name: 📦 Instalar dependencias web
-        run: npm install --legacy-peer-deps
+      - name: 📦 Instalar dependencias web (Blindado anti-caché)
+        run: |
+          npm cache clean --force
+          npm install --legacy-peer-deps
 
       - name: 🛠️ Asegurar Motor de Capacitor y herramientas de iOS
         run: npm install @capacitor/cli @capacitor/ios @capacitor/assets --legacy-peer-deps
@@ -150,8 +154,10 @@ jobs:
       - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
         run: npm pkg delete overrides
 
-      - name: 📦 Instalar dependencias web
-        run: npm install --legacy-peer-deps
+      - name: 📦 Instalar dependencias web (Blindado anti-caché)
+        run: |
+          npm cache clean --force
+          npm install --legacy-peer-deps
 
       - name: 🛠️ Asegurar herramientas de Escritorio
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
@@ -298,8 +304,10 @@ jobs:
       - name: 🩹 Limpiar bloqueos de NPM (Fix EOVERRIDE)
         run: npm pkg delete overrides
 
-      - name: 📦 Instalar dependencias web
-        run: npm install --legacy-peer-deps
+      - name: 📦 Instalar dependencias web (Blindado anti-caché)
+        run: |
+          npm cache clean --force
+          npm install --legacy-peer-deps
 
       - name: 🛠️ Asegurar herramientas de Escritorio (Electron)
         run: npm install electron electron-builder --save-dev --legacy-peer-deps
