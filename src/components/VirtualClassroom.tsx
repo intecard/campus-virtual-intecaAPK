@@ -21,7 +21,7 @@ import {
   Clock,
   Copy,
   X,
-  Type
+  Type // NUEVO: Importamos el icono para el botón de texto
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -37,6 +37,7 @@ import {
   setDoc 
 } from "firebase/firestore";
 
+// 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
 const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
 const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
 
@@ -46,30 +47,41 @@ interface VirtualClassroomProps {
 
 export default function VirtualClassroom({ currentUser }: VirtualClassroomProps) {
   // ==========================================
-  // BLINDAJE DE ROL
+  // BLINDAJE DE ROL (100% INMUNE A MAYÚSCULAS/ESPACIOS)
   // ==========================================
   const safeRole = String(currentUser?.role || '').toLowerCase().trim();
   const isHostOrAdmin = safeRole === 'admin' || safeRole === 'teacher';
 
   // ==========================================
-  // ESTADOS DE LA SALA
+  // ESTADOS DE LA SALA (LOBBY vs EN LLAMADA)
   // ==========================================
   const [isInRoom, setIsInRoom] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [activeTab, setActiveTab] = useState<'chat' | 'whiteboard' | 'recordings'>('chat');
 
+  // ==========================================
+  // ESTADOS DE FIREBASE (CHAT Y GRABACIONES)
+  // ==========================================
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [recordings, setRecordings] = useState<any[]>([]);
   const [loadingRecordings, setLoadingRecordings] = useState(true);
   
+  // NUEVO: Estado para el Radar de Clases Activas
   const [activeLiveClasses, setActiveLiveClasses] = useState<any[]>([]);
+
+  // ==========================================
+  // ESTADOS NUEVOS: PROGRAMACIÓN DE CLASES
+  // ==========================================
   const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
   const [isSchedulingModalOpen, setIsSchedulingModalOpen] = useState(false);
   const [scheduleTitle, setScheduleTitle] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
 
+  // ==========================================
+  // ESTADOS DE GRABACIÓN Y SUBIDA DE VIDEO
+  // ==========================================
   const [uploadingRecord, setUploadingRecord] = useState(false);
   const [newRecordTitle, setNewRecordTitle] = useState("");
   const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
@@ -81,17 +93,20 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // ==========================================
-  // ESTADOS DE LA PIZARRA
+  // ESTADOS DE LA PIZARRA VIRTUAL TÁCTIL Y TEXTO
   // ==========================================
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [brushColor, setBrushColor] = useState('#10b981');
   const [brushSize, setBrushSize] = useState(4);
+
+  // NUEVO: Estados para la herramienta de texto con teclado
   const [whiteboardTool, setWhiteboardTool] = useState<'pen' | 'text'>('pen');
   const [textCursor, setTextCursor] = useState({ x: 0, y: 0, visible: false });
   const [textInputValue, setTextInputValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Cargar Grabaciones
   useEffect(() => {
     const q = query(collection(db, "class_recordings"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -103,6 +118,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
+  // Radar de Clases en Vivo con Escudo Anti-Duplicados
   useEffect(() => {
     const q = query(collection(db, "active_classes"), orderBy("createdAt", "desc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -121,6 +137,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
+  // Cargar Clases Programadas desde Firebase
   useEffect(() => {
     const q = query(collection(db, "scheduled_classes"), orderBy("timestamp", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -133,6 +150,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return () => unsubscribe();
   }, []);
 
+  // Cargar Chat de la Sala
   useEffect(() => {
     if (!isInRoom || !roomCode) return;
     
@@ -166,22 +184,31 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     }, (error) => {
       console.error("Error en Firestore al intentar leer el chat:", error);
+      if (error.code === 'permission-denied') {
+        console.warn("ALERTA DE SEGURIDAD: Los estudiantes no tienen permiso en Firebase para leer/escribir en el chat.");
+      }
     });
     
     return () => unsubscribe();
   }, [isInRoom, roomCode]);
 
+  // ==========================================
+  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA
+  // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       stream.getTracks().forEach(track => track.stop());
     } catch (err) {
-      console.warn("Permisos denegados:", err);
+      console.warn("Permisos denegados o hardware no detectado:", err);
     }
     setRoomCode(code);
     setIsInRoom(true);
   };
 
+  // ==========================================
+  // AUTO-INGRESO DESDE LINK DIRECTO (?room=CODIGO)
+  // ==========================================
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomParam = params.get('room');
@@ -194,6 +221,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
   }, []);
 
+  // ==========================================
+  // COMPARTIR ENLACE POR WHATSAPP (CORREGIDO A FACILITADOR)
+  // ==========================================
   const shareOnWhatsApp = (code: string, hostName?: string) => {
     const joinUrl = `${window.location.origin}/?room=${code}`;
     const hostText = hostName ? ` con el facilitador *${hostName}*` : '';
@@ -214,6 +244,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const createNewRoom = async () => {
     const newCode = Math.random().toString(36).substring(2, 8);
+    
     if (isHostOrAdmin) {
       try {
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
@@ -226,9 +257,13 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         console.error("Error publicando la sala activa:", error);
       }
     }
+    
     triggerPermissionsAndJoin(newCode);
   };
 
+  // ==========================================
+  // FUNCIONES NUEVAS: AGENDA DE CLASES
+  // ==========================================
   const startScheduledRoom = async (specificCode: string) => {
     if (isHostOrAdmin) {
       try {
@@ -263,14 +298,15 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       setScheduleDate("");
       setScheduleTime("");
       setIsSchedulingModalOpen(false);
-      alert("¡Taller programado exitosamente!");
+      alert("¡Taller programado exitosamente! Ya puedes compartir el enlace.");
     } catch (error) {
+      console.error("Error programando la clase:", error);
       alert("Hubo un error al programar la clase.");
     }
   };
 
   const handleDeleteScheduledClass = async (id: string) => {
-    if (window.confirm("¿Estás seguro de cancelar este taller programado?")) {
+    if (window.confirm("¿Estás seguro de cancelar y eliminar este taller programado?")) {
       await deleteDoc(doc(db, "scheduled_classes", id));
     }
   };
@@ -289,7 +325,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const leaveRoom = () => {
-    const confirmMsg = isHostOrAdmin ? "¿Seguro que deseas FINALIZAR la clase?" : "¿Seguro que deseas salir?";
+    const confirmMsg = isHostOrAdmin 
+      ? "¿Seguro que deseas FINALIZAR la clase para todos los participantes?" 
+      : "¿Seguro que deseas salir de la clase?";
+
     if (window.confirm(confirmMsg)) {
       if (isHostOrAdmin) {
         addDoc(collection(db, `class_chat_${roomCode}`), {
@@ -298,10 +337,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           text: "ROOM_CLOSED_BY_HOST",
           timeString: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           timestamp: serverTimestamp()
-        }).catch((e) => console.error("Error:", e));
+        }).catch((e) => console.error("Error cerrando sala:", e));
         
         const hostDocId = currentUser.name.replace(/\s+/g, '_').toLowerCase();
-        deleteDoc(doc(db, "active_classes", hostDocId)).catch(e => console.error("Error:", e));
+        deleteDoc(doc(db, "active_classes", hostDocId)).catch(e => console.error("Error eliminando sala del radar:", e));
       }
 
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -335,6 +374,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
   };
 
+  // ==========================================
+  // FUNCIONES DE GRABACIÓN DE PANTALLA
+  // ==========================================
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -373,9 +415,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       mediaRecorderRef.current.start(1000);
       setIsRecording(true);
 
-      stream.getVideoTracks()[0].onended = () => { stopRecording(); };
+      stream.getVideoTracks()[0].onended = () => {
+        stopRecording();
+      };
     } catch (err) {
-      alert("No se pudo iniciar la grabación.");
+      console.error("Error al iniciar grabación:", err);
+      alert("No se pudo iniciar la grabación. Verifica los permisos de tu navegador.");
     }
   };
 
@@ -386,6 +431,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     setIsRecording(false);
   };
 
+  // ==========================================
+  // NUEVO: SUBIDA DE VIDEO A CLOUDINARY
+  // ==========================================
   const handleUploadRecording = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newRecordTitle || !selectedVideoFile) return;
@@ -403,7 +451,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) {
-        setUploadProgress((event.loaded / event.total) * 100);
+        const percentComplete = (event.loaded / event.total) * 100;
+        setUploadProgress(percentComplete);
       }
     };
 
@@ -419,20 +468,26 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               dateString: new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
               createdAt: serverTimestamp()
             });
+
             setNewRecordTitle("");
             setSelectedVideoFile(null);
-            alert("¡Grabación guardada!");
-          } catch (dbError) {}
+            alert("¡Grabación guardada en tu Nube y publicada exitosamente!");
+          } catch (dbError) {
+            console.error("Error guardando en Firestore:", dbError);
+            alert("El video subió a tu disco duro, pero hubo un error al registrarlo en la plataforma.");
+          }
         }
       } else {
-        alert("Error de subida.");
+        const errorData = JSON.parse(xhr.responseText);
+        alert("Error de Cloudinary: " + (errorData.error?.message || "Límite de tamaño excedido."));
       }
       setUploadingRecord(false);
       setUploadProgress(0);
     };
 
     xhr.onerror = () => {
-      alert("Fallo de conexión.");
+      console.error("Error en la conexión a Cloudinary.");
+      alert("Fallo de conexión. No se pudo subir el video.");
       setUploadingRecord(false);
       setUploadProgress(0);
     };
@@ -441,19 +496,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const handleDeleteRecording = async (id: string) => {
-    if (window.confirm("¿Eliminar grabación?")) {
+    if (window.confirm("¿Eliminar esta grabación de la plataforma?")) {
       await deleteDoc(doc(db, "class_recordings", id));
     }
   };
 
+  // ==========================================
+  // FUNCIONES DE PIZARRA CON SOPORTE PARA TEXTO
+  // ==========================================
   useEffect(() => {
     if (activeTab === 'whiteboard' && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
     }
   }, [activeTab]);
@@ -464,12 +523,17 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
-    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (whiteboardTool !== 'pen') return;
-    const ctx = canvasRef.current?.getContext('2d');
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     const { x, y } = getCoordinates(e.clientX, e.clientY);
     ctx.beginPath();
@@ -481,7 +545,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || whiteboardTool !== 'pen') return;
-    const ctx = canvasRef.current?.getContext('2d');
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     const { x, y } = getCoordinates(e.clientX, e.clientY);
     ctx.lineTo(x, y);
@@ -490,7 +555,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const startDrawingTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (whiteboardTool !== 'pen') return;
-    const ctx = canvasRef.current?.getContext('2d');
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     const touch = e.touches[0];
     const { x, y } = getCoordinates(touch.clientX, touch.clientY);
@@ -503,7 +569,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const drawTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing || whiteboardTool !== 'pen') return;
-    const ctx = canvasRef.current?.getContext('2d');
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
     if (!ctx) return;
     const touch = e.touches[0];
     const { x, y } = getCoordinates(touch.clientX, touch.clientY);
@@ -515,8 +582,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const handleCanvasContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (whiteboardTool === 'text') {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setTextCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top, visible: true });
+      const container = e.currentTarget;
+      const rect = container.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      setTextCursor({ x: clickX, y: clickY, visible: true });
       setTextInputValue("");
       setTimeout(() => inputRef.current?.focus(), 50);
     }
@@ -524,11 +595,16 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const finalizeText = () => {
     if (textInputValue.trim() && canvasRef.current) {
-      const ctx = canvasRef.current.getContext('2d');
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
       if (ctx) {
-        const rect = canvasRef.current.getBoundingClientRect();
-        const drawX = textCursor.x * (canvasRef.current.width / rect.width);
-        const drawY = textCursor.y * (canvasRef.current.height / rect.height);
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const drawX = textCursor.x * scaleX;
+        const drawY = textCursor.y * scaleY;
+
         ctx.textBaseline = 'top';
         ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
         ctx.fillStyle = brushColor;
@@ -540,13 +616,17 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const clearCanvas = () => {
-    if (!canvasRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
+  // ==========================================
+  // LÓGICA DE FILTRADO PARA ESTUDIANTES INSCRITOS
+  // ==========================================
   const visibleClasses = activeLiveClasses.filter(liveClass => {
     if (isHostOrAdmin) return true;
     if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
@@ -559,15 +639,20 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return currentUser.assignedTeachers.includes(schedClass.hostName); 
   });
 
+  // ==========================================
+  // RENDER 1: LOBBY
+  // ==========================================
   if (!isInRoom) {
     return (
       <div id="virtual-classroom-lobby" className="space-y-6 animate-in fade-in duration-500 pb-10 relative">
+
+        {/* MODAL DE PROGRAMACIÓN DE CLASES */}
         {isSchedulingModalOpen && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
               <div className="bg-slate-900 p-5 flex justify-between items-center">
                 <h3 className="text-white font-bold flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-emerald-400" /> Programar Taller
+                  <Calendar className="w-5 h-5 text-emerald-400" /> Programar Taller / Clase
                 </h3>
                 <button onClick={() => setIsSchedulingModalOpen(false)} className="text-slate-400 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
@@ -576,7 +661,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <form onSubmit={handleScheduleClass} className="p-6 space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Título del Taller</label>
-                  <input type="text" required value={scheduleTitle} onChange={e => setScheduleTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  <input type="text" required value={scheduleTitle} onChange={e => setScheduleTitle(e.target.value)} placeholder="Ej. Taller Ley 87-01..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -617,12 +702,15 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
+                  <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
                 </div>
 
+                {/* RADAR DE CLASES ACTIVAS (FILTRADO) */}
                 {visibleClasses.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-slate-100">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Transmisiones en Vivo
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                      Transmisiones en Vivo Ahora
                     </h3>
                     <div className="grid gap-3">
                       {visibleClasses.map(liveClass => (
@@ -637,8 +725,23 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                             </div>
                           </div>
                           <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button type="button" onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2">
-                              <Play className="w-4 h-4 fill-current" /> Entrar
+                            {isHostOrAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
+                                title="Enviar link directo por WhatsApp"
+                              >
+                                <Share2 className="w-4 h-4 shrink-0" />
+                                <span>Invitar por WhatsApp</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                            >
+                              <Play className="w-4 h-4 fill-current shrink-0" /> Entrar Directamente
                             </button>
                           </div>
                         </div>
@@ -647,10 +750,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   </div>
                 )}
 
+                {/* RADAR DE CLASES PROGRAMADAS */}
                 {visibleScheduledClasses.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-slate-100">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-sky-500" /> Próximos Talleres
+                      <Calendar className="w-4 h-4 text-sky-500" />
+                      Próximos Talleres Programados
                     </h3>
                     <div className="grid gap-3">
                       {visibleScheduledClasses.map(schedClass => (
@@ -663,10 +768,25 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                             </div>
                             <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-wider">Facilitador: {schedClass.hostName}</p>
                           </div>
+                          
                           <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-                            <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5">
+                            <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
                               <Copy className="w-3.5 h-3.5" /> Copiar Link
                             </button>
+                            
+                            {isHostOrAdmin && (
+                              <>
+                                <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                                  <Share2 className="w-3.5 h-3.5" /> Enviar
+                                </button>
+                                <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                                  <Play className="w-3.5 h-3.5" /> Iniciar Taller
+                                </button>
+                                <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2 transition-colors" title="Cancelar Taller">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -680,12 +800,21 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <div className="flex-grow border-t border-slate-100"></div>
                 </div>
 
-                <form onSubmit={joinRoom} className="space-y-4">
+                {/* FORMULARIO MANUAL */}
+                <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 && visibleScheduledClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
-                      <input type="text" value={roomCode} onChange={(e) => setRoomCode(e.target.value)} placeholder="Ej. farma101" className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none" />
-                      <button type="submit" className="bg-slate-900 hover:bg-black text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">Unirse</button>
+                      <input
+                        type="text"
+                        value={roomCode}
+                        onChange={(e) => setRoomCode(e.target.value)}
+                        placeholder="Ej. farma101"
+                        className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                      <button type="submit" className="bg-slate-900 hover:bg-black text-white font-bold px-6 py-3 rounded-xl transition-all shadow-md">
+                        Unirse
+                      </button>
                     </div>
                   </div>
                 </form>
@@ -698,20 +827,31 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             )}
 
             {isHostOrAdmin && (
-              <div className="pt-2 space-y-3">
-                <button type="button" onClick={() => createNewRoom()} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md">
-                  <Plus className="w-5 h-5" /> Iniciar Nueva Clase
+              <div className={currentUser.role !== 'teacher' ? "pt-4 border-t border-slate-100 space-y-3" : "pt-2 space-y-3"}>
+                <button
+                  type="button"
+                  onClick={() => createNewRoom()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md"
+                >
+                  <Plus className="w-5 h-5" /> Iniciar Nueva Clase en Vivo
                 </button>
-                <button type="button" onClick={() => setIsSchedulingModalOpen(true)} className="w-full bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm">
+                
+                <button
+                  type="button"
+                  onClick={() => setIsSchedulingModalOpen(true)}
+                  className="w-full bg-white hover:bg-slate-50 text-slate-700 border-2 border-slate-200 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm"
+                >
                   <Calendar className="w-5 h-5 text-slate-400" /> Programar un Taller Futuro
                 </button>
               </div>
             )}
             
+            {/* RADAR DE CLASES ACTIVAS (Para Profesores) */}
             {isHostOrAdmin && visibleClasses.length > 0 && (
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span> Transmisiones Activas
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  Transmisiones en Vivo Ahora
                 </h3>
                 <div className="grid gap-3">
                   {visibleClasses.map(liveClass => (
@@ -726,10 +866,20 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         </div>
                       </div>
                       <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <button type="button" onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)} className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center justify-center gap-1.5 shrink-0">
-                          <Share2 className="w-4 h-4 shrink-0" /> Invitar
+                        <button
+                          type="button"
+                          onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
+                          title="Enviar link directo por WhatsApp"
+                        >
+                          <Share2 className="w-4 h-4 shrink-0" />
+                          <span>Invitar por WhatsApp</span>
                         </button>
-                        <button type="button" onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center justify-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                        >
                           <Play className="w-4 h-4 fill-current shrink-0" /> Entrar
                         </button>
                       </div>
@@ -739,10 +889,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
 
+            {/* RADAR DE CLASES PROGRAMADAS (Para Profesores) */}
             {isHostOrAdmin && visibleScheduledClasses.length > 0 && (
               <div className="space-y-3 pt-4 border-t border-slate-100">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-sky-500" /> Talleres Programados
+                  <Calendar className="w-4 h-4 text-sky-500" />
+                  Próximos Talleres Programados
                 </h3>
                 <div className="grid gap-3">
                   {visibleScheduledClasses.map(schedClass => (
@@ -755,17 +907,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         </div>
                         <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-wider">Facilitador: {schedClass.hostName}</p>
                       </div>
+                      
                       <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
-                        <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5">
+                        <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
                           <Copy className="w-3.5 h-3.5" /> Copiar Link
                         </button>
-                        <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5">
+                        
+                        <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
                           <Share2 className="w-3.5 h-3.5" /> Enviar
                         </button>
-                        <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1.5">
+                        <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
                           <Play className="w-3.5 h-3.5" /> Iniciar Taller
                         </button>
-                        <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2" title="Cancelar Taller">
+                        <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2 transition-colors" title="Cancelar Taller">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -774,6 +928,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 </div>
               </div>
             )}
+            
           </div>
 
           {isHostOrAdmin && (
@@ -803,11 +958,21 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         <p className="text-[10px] text-slate-500 font-medium mt-1">Por: {rec.uploadedBy} • {rec.dateString}</p>
                       </div>
                       <div className="flex items-center justify-between">
-                        <a href={rec.url} target="_blank" rel="noreferrer" className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                        <a
+                          href={rec.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[10px] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                        >
                           <Play className="w-3 h-3" /> Ver Grabación
                         </a>
                         {(safeRole === 'admin' || currentUser.name === rec.uploadedBy) && (
-                          <button type="button" onClick={() => handleDeleteRecording(rec.id)} className="text-slate-400 hover:text-rose-500 p-1.5" title="Eliminar grabación">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRecording(rec.id)}
+                            className="text-slate-400 hover:text-rose-500 p-1.5 transition-colors"
+                            title="Eliminar grabación"
+                          >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         )}
@@ -824,11 +989,16 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA (INTEGRACIÓN DAILY.CO NATIVA)
+  // RENDER 2: SALA ACTIVA
   // ==========================================
-  
+  // 🛡️ DETECCIÓN EXCLUSIVA PARA WINDOWS Y MAC
+  const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
+
+  const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
+
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
+      
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-900 p-4 rounded-2xl text-white shadow-lg shrink-0">
         <div>
           <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -837,32 +1007,44 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           </span>
           <h1 className="text-lg md:text-xl font-display font-bold text-white mt-0.5">Clase en Vivo</h1>
         </div>
+        
         <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
           {isHostOrAdmin && (
-            <button type="button" onClick={() => shareOnWhatsApp(roomCode, currentUser.name)} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3.5 rounded-xl flex items-center gap-2 text-xs sm:text-sm shrink-0 border border-emerald-400">
-              <Share2 className="w-4 h-4 shrink-0" /> <span className="hidden sm:inline">Invitar</span>
+            <button
+              type="button"
+              onClick={() => shareOnWhatsApp(roomCode, currentUser.name)}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-2 shadow-md text-xs sm:text-sm shrink-0 border border-emerald-400"
+              title="Enviar link directo por WhatsApp"
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span>Invitar por WhatsApp</span>
             </button>
           )}
-          <button type="button" onClick={leaveRoom} className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-3 md:px-4 rounded-xl flex items-center gap-2 shadow-sm shrink-0">
-            <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Salir</span>
+          <button
+            type="button"
+            onClick={leaveRoom}
+            className="bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 px-3 md:px-4 rounded-xl transition-all flex items-center gap-2 shadow-sm shrink-0"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Salir de la Clase</span>
           </button>
         </div>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+        
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
-          
-          {/* NUEVO MOTOR: Daily.co inyectado de forma directa y nativa */}
           <iframe
             allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            src={`https://intecacampusvirtual.daily.co/live`}
+            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms" : undefined}
+            src={`https://meet.jit.si/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
-
+          
           <div className="absolute top-0 left-0 z-10 w-48 sm:w-56 h-16 bg-slate-900 flex items-center justify-center rounded-br-3xl shadow-[5px_5px_15px_rgba(0,0,0,0.5)] border-b border-r border-slate-700 pointer-events-none">
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
@@ -873,14 +1055,24 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
         <div className="w-full lg:w-1/3 bg-white rounded-2xl md:rounded-3xl border border-slate-100 shadow-sm flex flex-col flex-1 min-h-[40vh] overflow-hidden">
           <div className="flex border-b border-slate-100 bg-slate-50 p-2 gap-1 shrink-0">
-            <button onClick={() => setActiveTab('chat')} className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg ${activeTab === 'chat' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <button
+              onClick={() => setActiveTab('chat')}
+              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'chat' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
               <MessageSquare className="w-3.5 h-3.5" /> Chat Live
             </button>
-            <button onClick={() => setActiveTab('whiteboard')} className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg ${activeTab === 'whiteboard' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            <button
+              onClick={() => setActiveTab('whiteboard')}
+              className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'whiteboard' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+            >
               <Palette className="w-3.5 h-3.5" /> Pizarra
             </button>
+            
             {isHostOrAdmin && (
-              <button onClick={() => setActiveTab('recordings')} className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <button
+                onClick={() => setActiveTab('recordings')}
+                className={`flex-1 flex justify-center items-center gap-1.5 py-2 text-[10px] md:text-xs font-bold rounded-lg transition-all ${activeTab === 'recordings' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}
+              >
                 <Tv className="w-3.5 h-3.5" /> Grabar
               </button>
             )}
@@ -894,11 +1086,13 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2 opacity-60">
                       <MessageSquare className="w-8 h-8" />
                       <p className="text-xs font-bold">No hay mensajes aún.</p>
+                      <p className="text-[10px]">Escribe el primero en esta sala.</p>
                     </div>
                   ) : (
                     chatMessages.map((msg, idx) => {
                       const isMe = msg.senderName === currentUser.name;
                       if (msg.text === "ROOM_CLOSED_BY_HOST") return null;
+
                       return (
                         <div key={msg.id || idx} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} space-y-0.5`}>
                           <div className="flex items-baseline gap-2">
@@ -914,9 +1108,20 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   )}
                   <div ref={chatEndRef} />
                 </div>
-                <form onSubmit={handleSendMessage} className="flex gap-2 pt-2 border-t border-slate-200 bg-white p-1 rounded-xl">
-                  <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Escribe aquí..." className="flex-1 bg-transparent border-none px-3 py-1 text-sm focus:ring-0 text-slate-800" />
-                  <button type="submit" disabled={!newMessage.trim()} className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white p-2.5 rounded-lg flex items-center justify-center">
+
+                <form onSubmit={handleSendMessage} className="flex gap-2 pt-2 md:pt-3 border-t border-slate-200 shrink-0 bg-white p-1 rounded-xl">
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Escribe y envía emojis..."
+                    className="flex-1 bg-transparent border-none px-3 py-1 text-sm focus:outline-none focus:ring-0 text-slate-800"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newMessage.trim()}
+                    className="bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white p-2.5 rounded-lg transition-all shadow-sm flex items-center justify-center"
+                  >
                     <MessageSquare className="w-4 h-4" />
                   </button>
                 </form>
@@ -927,37 +1132,111 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <div className="flex flex-col h-full space-y-3 justify-between absolute inset-0 p-3 md:p-4">
                 <div className="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200 shadow-sm shrink-0">
                   <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider pl-2">Pizarra Local</span>
-                  <button type="button" onClick={clearCanvas} className="text-[10px] bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold">
+                  <button
+                    type="button"
+                    onClick={clearCanvas}
+                    className="text-[10px] bg-rose-50 text-rose-600 hover:bg-rose-100 px-3 py-1.5 rounded-lg flex items-center gap-1 font-bold transition-colors"
+                  >
                     <Eraser className="w-3.5 h-3.5" /> Limpiar
                   </button>
                 </div>
-                <div className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative" onClick={handleCanvasContainerClick}>
+                
+                <div 
+                  className="flex-1 border-2 border-slate-200 rounded-2xl overflow-hidden bg-white shadow-inner relative"
+                  onClick={handleCanvasContainerClick}
+                >
                   <canvas
-                    ref={canvasRef} width={800} height={800}
-                    onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawingTouch} onTouchMove={drawTouch} onTouchEnd={stopDrawing} onTouchCancel={stopDrawing}
-                    className={`w-full h-full touch-none ${whiteboardTool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`} style={{ width: '100%', height: '100%' }}
+                    ref={canvasRef}
+                    width={800}
+                    height={800}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawingTouch}
+                    onTouchMove={drawTouch}
+                    onTouchEnd={stopDrawing}
+                    onTouchCancel={stopDrawing}
+                    className={`w-full h-full touch-none ${whiteboardTool === 'text' ? 'cursor-text' : 'cursor-crosshair'}`}
+                    style={{ width: '100%', height: '100%' }}
                   />
+                  
+                  {/* NUEVO: Input de texto sobre la pizarra */}
                   {textCursor.visible && (
                     <input
-                      ref={inputRef} type="text" value={textInputValue} onChange={(e) => setTextInputValue(e.target.value)} onBlur={finalizeText} onKeyDown={(e) => e.key === 'Enter' && finalizeText()}
-                      style={{ position: 'absolute', left: textCursor.x, top: textCursor.y, color: brushColor, fontSize: `${Math.max(16, brushSize * 4)}px`, fontWeight: 'bold', fontFamily: 'sans-serif', background: 'transparent', border: '1px dashed #94a3b8', outline: 'none', minWidth: '200px', zIndex: 20 }} placeholder="Escribe aquí..."
+                      ref={inputRef}
+                      type="text"
+                      value={textInputValue}
+                      onChange={(e) => setTextInputValue(e.target.value)}
+                      onBlur={finalizeText}
+                      onKeyDown={(e) => e.key === 'Enter' && finalizeText()}
+                      style={{
+                        position: 'absolute',
+                        left: textCursor.x,
+                        top: textCursor.y,
+                        color: brushColor,
+                        fontSize: `${Math.max(16, brushSize * 4)}px`,
+                        fontWeight: 'bold',
+                        fontFamily: 'sans-serif',
+                        background: 'transparent',
+                        border: '1px dashed #94a3b8',
+                        outline: 'none',
+                        padding: 0,
+                        margin: 0,
+                        minWidth: '200px',
+                        zIndex: 20
+                      }}
+                      placeholder="Escribe aquí..."
                     />
                   )}
                 </div>
+
                 <div className="flex flex-wrap justify-between items-center bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0 gap-2">
                   <div className="flex gap-2 items-center">
+                    
+                    {/* NUEVO: Selector de Herramienta (Lápiz vs Texto) */}
                     <div className="flex gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200 mr-2">
-                      <button type="button" onClick={() => { setWhiteboardTool('pen'); setTextCursor(prev => ({ ...prev, visible: false })); }} className={`p-1.5 rounded-md ${whiteboardTool === 'pen' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}><Palette className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => setWhiteboardTool('text')} className={`p-1.5 rounded-md ${whiteboardTool === 'text' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}><Type className="w-4 h-4" /></button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWhiteboardTool('pen');
+                          setTextCursor(prev => ({ ...prev, visible: false }));
+                        }}
+                        className={`p-1.5 rounded-md transition-all ${whiteboardTool === 'pen' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Lápiz"
+                      >
+                        <Palette className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setWhiteboardTool('text')}
+                        className={`p-1.5 rounded-md transition-all ${whiteboardTool === 'text' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-400 hover:text-slate-600'}`}
+                        title="Escribir Texto"
+                      >
+                        <Type className="w-4 h-4" />
+                      </button>
                     </div>
+
                     {['#10b981', '#0ea5e9', '#f59e0b', '#ef4444', '#0f172a'].map((col) => (
-                      <button key={col} type="button" onClick={() => setBrushColor(col)} className={`w-6 h-6 rounded-full border-2 ${brushColor === col ? 'scale-110 border-slate-400 shadow-md' : 'border-transparent'}`} style={{ backgroundColor: col }} />
+                      <button
+                        key={col}
+                        type="button"
+                        onClick={() => setBrushColor(col)}
+                        className={`w-6 h-6 rounded-full border-2 transition-all ${brushColor === col ? 'scale-110 border-slate-400 shadow-md' : 'border-transparent'}`}
+                        style={{ backgroundColor: col }}
+                      />
                     ))}
                   </div>
                   <div className="flex items-center gap-2 bg-slate-50 px-2 py-1 rounded-lg w-full sm:w-auto">
                     <Palette className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <input type="range" min={1} max={12} value={brushSize} onChange={(e) => setBrushSize(Number(e.target.value))} className="w-16 accent-emerald-500 cursor-pointer" />
+                    <input
+                      type="range"
+                      min={1}
+                      max={12}
+                      value={brushSize}
+                      onChange={(e) => setBrushSize(Number(e.target.value))}
+                      className="w-full sm:w-16 accent-emerald-500 cursor-pointer"
+                    />
                   </div>
                 </div>
               </div>
@@ -966,40 +1245,91 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
             {activeTab === 'recordings' && isHostOrAdmin && (
               <div className="flex flex-col h-full absolute inset-0 p-3 md:p-4 space-y-4">
                 <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 space-y-3 shrink-0">
-                  <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2"><Tv className="w-4 h-4" /> Opciones</h3>
+                  <h3 className="font-bold text-emerald-800 text-sm flex items-center gap-2">
+                    <Tv className="w-4 h-4" /> Opciones de Grabación
+                  </h3>
                   <div className="flex gap-2">
                     {!isRecording ? (
-                      <button type="button" onClick={startRecording} className="flex-1 bg-red-500 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2"><Disc className="w-4 h-4" /> Grabar Pantalla</button>
+                      <button 
+                        type="button"
+                        onClick={startRecording}
+                        className="flex-1 bg-red-500 hover:bg-red-600 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-sm"
+                      >
+                        <Disc className="w-4 h-4" /> Grabar Pantalla
+                      </button>
                     ) : (
-                      <button type="button" onClick={stopRecording} className="flex-1 bg-slate-900 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 animate-pulse"><StopCircle className="w-4 h-4 text-red-500" /> Finalizar</button>
+                      <button 
+                        type="button"
+                        onClick={stopRecording}
+                        className="flex-1 bg-slate-900 hover:bg-black text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition-all animate-pulse shadow-sm"
+                      >
+                        <StopCircle className="w-4 h-4 text-red-500" /> Finalizar Grabación
+                      </button>
                     )}
                   </div>
+                  <p className="text-[10px] text-emerald-600 leading-relaxed font-medium">
+                    {isRecording ? "Grabando pantalla en este momento..." : "Puedes grabar la clase en vivo, o subir un video desde tus archivos para el archivo general."}
+                  </p>
                 </div>
+                
                 <form onSubmit={handleUploadRecording} className="space-y-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex-1 flex flex-col">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Título de la Clase</label>
-                    <input type="text" required placeholder="Ej. Unidad 1..." value={newRecordTitle} onChange={e => setNewRecordTitle(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Unidad 1: Actualidades..."
+                      value={newRecordTitle}
+                      onChange={e => setNewRecordTitle(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
                   </div>
+                  
                   <div className="flex-1 flex flex-col">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Archivo</label>
-                    <div className="relative flex-1 min-h-[100px] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 cursor-pointer group">
-                      <input type="file" accept="video/*" onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Archivo de Video</label>
+                    <div className="relative flex-1 min-h-[100px] flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer group">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        onChange={(e) => setSelectedVideoFile(e.target.files?.[0] || null)}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      
                       {selectedVideoFile ? (
                         <div className="flex flex-col items-center text-emerald-600 gap-2 text-center pointer-events-none">
                           <CheckCircle2 className="w-8 h-8" />
                           <span className="text-xs font-bold break-words max-w-[200px]">{selectedVideoFile.name}</span>
+                          <span className="text-[10px] text-slate-500">{(selectedVideoFile.size / 1024 / 1024).toFixed(2)} MB</span>
                         </div>
                       ) : (
                         <div className="flex flex-col items-center text-slate-400 group-hover:text-emerald-500 gap-2 pointer-events-none">
                           <FileVideo className="w-8 h-8" />
-                          <span className="text-xs font-bold text-center">Seleccionar archivo</span>
+                          <span className="text-xs font-bold text-center">Toca para seleccionar<br/>o graba un video arriba</span>
                         </div>
                       )}
                     </div>
                   </div>
-                  {uploadingRecord && <div className="w-full bg-slate-200 rounded-full h-2 mt-2 overflow-hidden"><div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div></div>}
-                  <button type="submit" disabled={uploadingRecord || !newRecordTitle || !selectedVideoFile} className="w-full bg-slate-900 text-white font-bold py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs shadow-md mt-auto">
-                    {uploadingRecord ? <><Loader2 className="w-4 h-4 animate-spin" /> Subiendo ({Math.round(uploadProgress)}%)</> : <><Upload className="w-4 h-4" /> Subir a la Base de Datos</>}
+
+                  {uploadingRecord && (
+                    <div className="w-full bg-slate-200 rounded-full h-2 mt-2 overflow-hidden">
+                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={uploadingRecord || !newRecordTitle || !selectedVideoFile}
+                    className="w-full bg-slate-900 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 text-xs shadow-md mt-auto shrink-0"
+                  >
+                    {uploadingRecord ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Subiendo a la Nube ({Math.round(uploadProgress)}%)
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4" /> Subir a la Base de Datos
+                      </>
+                    )}
                   </button>
                 </form>
               </div>
