@@ -21,7 +21,7 @@ import {
   Clock,
   Copy,
   X,
-  Type // NUEVO: Importamos el icono para el botón de texto
+  Type
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -530,6 +530,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Si la herramienta no es el lápiz, evitamos dibujar
     if (whiteboardTool !== 'pen') return;
 
     const canvas = canvasRef.current;
@@ -580,7 +581,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const stopDrawing = () => setIsDrawing(false);
 
+  // NUEVO: Funciones para manejar la herramienta de texto en la pizarra
   const handleCanvasContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Si la herramienta es de texto y hacemos clic sobre el contenedor
     if (whiteboardTool === 'text') {
       const container = e.currentTarget;
       const rect = container.getBoundingClientRect();
@@ -598,6 +601,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        // Necesitamos mapear las coordenadas visuales CSS de vuelta a la resolución original del canvas (800x800)
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -605,12 +609,13 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const drawX = textCursor.x * scaleX;
         const drawY = textCursor.y * scaleY;
 
-        ctx.textBaseline = 'top';
+        ctx.textBaseline = 'top'; // Alinea la parte de arriba de la letra con nuestro punto
         ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
         ctx.fillStyle = brushColor;
         ctx.fillText(textInputValue, drawX, drawY);
       }
     }
+    // Ocultar input tras estampar
     setTextCursor(prev => ({ ...prev, visible: false }));
     setTextInputValue("");
   };
@@ -1037,13 +1042,18 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
         
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
+          
+          {/* ========================================================= */}
+          {/* AQUÍ ESTÁ LA CORRECCIÓN: SE AGREGARON LOS PERMISOS POPUPS */}
+          {/* ========================================================= */}
           <iframe
-            allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen"
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms" : undefined}
+            allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen; popups"
+            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" : undefined}
             src={`https://meet.jit.si/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
             className="w-full h-full border-0 absolute inset-0 z-0"
             title="Video Classroom INTECA"
           />
+          {/* ========================================================= */}
           
           <div className="absolute top-0 left-0 z-10 w-48 sm:w-56 h-16 bg-slate-900 flex items-center justify-center rounded-br-3xl shadow-[5px_5px_15px_rgba(0,0,0,0.5)] border-b border-r border-slate-700 pointer-events-none">
             <div className="flex items-center gap-2">
