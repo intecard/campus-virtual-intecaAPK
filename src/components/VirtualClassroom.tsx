@@ -44,6 +44,7 @@ import {
   RoomAudioRenderer,
 } from "@livekit/components-react";
 import "@livekit/components-styles";
+import * as jose from 'jose';
 
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
 const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
@@ -207,7 +208,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, [isInRoom, roomCode]);
 
   // ==========================================
-  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA + LIVEKIT TOKEN
+  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA + FABRICANTE LOCAL DE TOKENS
   // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
@@ -219,17 +220,32 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     setRoomCode(code);
     setIsInRoom(true);
 
-    // SOLICITUD DEL TOKEN VIP A NUESTRO SERVIDOR
+    // MAGIA: FABRICAMOS EL PASE VIP AQUÍ MISMO PARA EVITAR SERVIDORES
     try {
-      const response = await fetch(`/.netlify/functions/getLiveKitToken?room=${code}&username=${encodeURIComponent(currentUser.name)}`);
-      if (response.ok) {
-        const data = await response.json();
-        setLiveKitToken(data.token);
-      } else {
-        console.warn("Error obteniendo el token de LiveKit");
+      // ⚠️ REEMPLAZA ESTAS DOS LÍNEAS CON TUS LLAVES REALES
+      const apiKey = "API_KEY_AQUI"; 
+      const apiSecret = "API_SECRET_AQUI";
+
+      if (apiKey === "API_KEY_AQUI") {
+        alert("Socio, olvidaste pegar tus llaves de LiveKit en el código.");
+        return;
       }
+
+      const secret = new TextEncoder().encode(apiSecret);
+      const token = await new jose.SignJWT({
+        name: currentUser.name,
+        video: { roomJoin: true, room: code, canPublish: true, canSubscribe: true }
+      })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuer(apiKey)
+      .setSubject(currentUser.name)
+      .setNotBefore('0s')
+      .setExpirationTime('3h') // 3 horas exactas de clase fluida garantizada
+      .sign(secret);
+
+      setLiveKitToken(token);
     } catch (err) {
-      console.warn("El servidor de tokens aún no está en línea.");
+      console.error("Error fabricando el pase VIP:", err);
     }
   };
 

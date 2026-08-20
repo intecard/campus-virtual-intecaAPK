@@ -33,6 +33,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.15.0",
+    "jose": "^6.2.9",
     "livekit-client": "^2.22.0",
     "livekit-server-sdk": "^2.18.0",
     "lucide-react": "^0.546.0",
