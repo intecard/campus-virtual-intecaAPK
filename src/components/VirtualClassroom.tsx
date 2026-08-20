@@ -222,14 +222,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
     // MAGIA: FABRICAMOS EL PASE VIP AQUÍ MISMO PARA EVITAR SERVIDORES
     try {
-      // ⚠️ REEMPLAZA ESTAS DOS LÍNEAS CON TUS LLAVES REALES
+      // LLAVES LIMPIAS DE LIVEKIT
       const apiKey = "APIaQ4Ub6TSBwGG"; 
       const apiSecret = "Iuxr8y75HUcW9vtF15iSgEePk8JsypiByPaXmJBPShY";
-
-      if (apiKey === "APIaQ4Ub6TSBwGG") {
-        alert("Socio, olvidaste pegar tus llaves de LiveKit en el código.");
-        return;
-      }
 
       const secret = new TextEncoder().encode(apiSecret);
       const token = await new jose.SignJWT({
