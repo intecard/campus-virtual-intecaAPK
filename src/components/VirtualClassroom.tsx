@@ -223,10 +223,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     // MAGIA: FABRICAMOS EL PASE VIP AQUÍ MISMO PARA EVITAR SERVIDORES
     try {
       // ⚠️ REEMPLAZA ESTAS DOS LÍNEAS CON TUS LLAVES REALES
-      const apiKey = "API_KEY_AQUI"; 
-      const apiSecret = "API_SECRET_AQUI";
+      const apiKey = "2	APIaQ4Ub6TSBwGG"; 
+      const apiSecret = "3	Iuxr8y75HUcW9vtF15iSgEePk8JsypiByPaXmJBPShY";
 
-      if (apiKey === "API_KEY_AQUI") {
+      if (apiKey === "2	APIaQ4Ub6TSBwGG") {
         alert("Socio, olvidaste pegar tus llaves de LiveKit en el código.");
         return;
       }
