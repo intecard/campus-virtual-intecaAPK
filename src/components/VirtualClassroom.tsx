@@ -37,6 +37,14 @@ import {
   setDoc 
 } from "firebase/firestore";
 
+// 🚀 IMPORTACIONES NATIVAS DE LIVEKIT Y SUS ESTILOS
+import {
+  LiveKitRoom,
+  VideoConference,
+  RoomAudioRenderer,
+} from "@livekit/components-react";
+import "@livekit/components-styles";
+
 // 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
 const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
 const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
@@ -58,6 +66,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   const [isInRoom, setIsInRoom] = useState(false);
   const [roomCode, setRoomCode] = useState("");
   const [activeTab, setActiveTab] = useState<'chat' | 'whiteboard' | 'recordings'>('chat');
+
+  // ==========================================
+  // NUEVO: ESTADO PARA EL PASE VIP DE LIVEKIT (TOKEN)
+  // ==========================================
+  const [liveKitToken, setLiveKitToken] = useState("");
 
   // ==========================================
   // ESTADOS DE FIREBASE (CHAT Y GRABACIONES)
@@ -176,6 +189,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         }
         setIsInRoom(false);
         setRoomCode("");
+        setLiveKitToken(""); // Limpiamos el token de LiveKit
         setChatMessages([]);
         return; 
       }
@@ -193,7 +207,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, [isInRoom, roomCode]);
 
   // ==========================================
-  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA
+  // 🛡️ TRUCO MÓVIL Y CONTROL DE SALA + LIVEKIT TOKEN
   // ==========================================
   const triggerPermissionsAndJoin = async (code: string) => {
     try {
@@ -204,6 +218,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
     setRoomCode(code);
     setIsInRoom(true);
+
+    // SOLICITUD DEL TOKEN VIP A NUESTRO SERVIDOR
+    try {
+      const response = await fetch(`/.netlify/functions/getLiveKitToken?room=${code}&username=${encodeURIComponent(currentUser.name)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setLiveKitToken(data.token);
+      } else {
+        console.warn("Error obteniendo el token de LiveKit");
+      }
+    } catch (err) {
+      console.warn("El servidor de tokens aún no está en línea.");
+    }
   };
 
   // ==========================================
@@ -350,6 +377,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       
       setIsInRoom(false);
       setRoomCode("");
+      setLiveKitToken("");
       setChatMessages([]);
     }
   };
@@ -994,12 +1022,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }
 
   // ==========================================
-  // RENDER 2: SALA ACTIVA (NUEVO SERVIDOR OPEN SOURCE SIN ANUNCIOS)
+  // RENDER 2: SALA ACTIVA (MOTOR NATIVO LIVEKIT)
   // ==========================================
-  const isDesktopApp = /Windows|Macintosh/i.test(navigator.userAgent);
-
-  const jitsiConfigParams = `&config.startInTileView=true&config.channelLastN=-1&config.disableDeepLinking=true&config.deepLinking.enabled=false&interfaceConfig.DISABLE_DEEP_LINKING=true&interfaceConfig.MOBILE_APP_PROMO=false&config.prejoinPageEnabled=false&config.toolbarButtons=${encodeURIComponent('["camera","desktop","fullscreen","microphone","participants-pane","profile","raisehand","security","select-background","settings","shareaudio","sharedvideo","shortcuts","stats","tileview","toggle-camera","videoquality"]')}&interfaceConfig.SHOW_JITSI_WATERMARK=false&interfaceConfig.SHOW_PROMOTIONAL_CLOSE_PAGE=false`;
-
   return (
     <div id="virtual-classroom-active" className="space-y-4 md:space-y-6 animate-in zoom-in-95 duration-500 h-[calc(100vh-100px)] flex flex-col">
       
@@ -1043,15 +1067,28 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         <div className="w-full lg:w-2/3 bg-black rounded-2xl md:rounded-3xl overflow-hidden border border-slate-800 shadow-xl flex flex-col relative h-[35vh] md:h-[50vh] lg:h-auto shrink-0">
           
           {/* ========================================================= */}
-          {/* AQUÍ ESTÁ LA CORRECCIÓN: CAMBIO DE SERVIDOR A UNO LIBRE   */}
+          {/* MOTOR NATIVO LIVEKIT: EL CAMPUS ES 100% TUYO AHORA        */}
           {/* ========================================================= */}
-          <iframe
-            allow="camera; microphone; display-capture; autoplay; clipboard-write; fullscreen; popups"
-            sandbox={isDesktopApp ? "allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox" : undefined}
-            src={`https://meet.ffmuc.net/inteca_campus_${roomCode}${isDesktopApp ? '?web=1' : ''}#userInfo.displayName="${encodeURIComponent(currentUser.name)}"${jitsiConfigParams}`}
-            className="w-full h-full border-0 absolute inset-0 z-0"
-            title="Video Classroom INTECA"
-          />
+          {liveKitToken ? (
+            <LiveKitRoom
+              video={true}
+              audio={true}
+              token={liveKitToken}
+              serverUrl="wss://inteca-campus-virtual-997yr3h8.livekit.cloud"
+              data-lk-theme="default"
+              style={{ height: '100%', width: '100%', borderRadius: '1.5rem', overflow: 'hidden' }}
+              onDisconnected={leaveRoom}
+            >
+              <VideoConference />
+              <RoomAudioRenderer />
+            </LiveKitRoom>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-center p-6 z-0 rounded-3xl">
+              <Loader2 className="w-10 h-10 text-emerald-400 animate-spin mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">Conectando al Servidor Seguro...</h3>
+              <p className="text-sm text-slate-400">Generando llaves de encriptación para {currentUser.name}</p>
+            </div>
+          )}
           {/* ========================================================= */}
           
           <div className="absolute top-0 left-0 z-10 w-48 sm:w-56 h-16 bg-slate-900 flex items-center justify-center rounded-br-3xl shadow-[5px_5px_15px_rgba(0,0,0,0.5)] border-b border-r border-slate-700 pointer-events-none">
