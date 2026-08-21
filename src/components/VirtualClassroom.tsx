@@ -28,7 +28,8 @@ import {
   MonitorUp,
   Users,
   Hand,
-  Smile
+  Smile,
+  Sparkles
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -49,7 +50,7 @@ import {
   LiveKitRoom,
   VideoConference,
   RoomAudioRenderer,
-  useTrackToggle,
+  useLocalParticipant,
   useParticipants
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
@@ -65,26 +66,69 @@ interface VirtualClassroomProps {
 }
 
 // ==========================================
-// NUEVA BARRA DE HERRAMIENTAS PERSONALIZADA 100% EN ESPAÑOL
+// NUEVA BARRA DE HERRAMIENTAS PERSONALIZADA 100% EN ESPAÑOL Y FUNCIONAL
 // ==========================================
 function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction: (type: string, p: string) => void }) {
-  // Aplicamos @ts-ignore para silenciar la advertencia estricta de TypeScript
-  // @ts-ignore
-  const { toggle: toggleMic, enabled: isMicEnabled } = useTrackToggle(Track.Source.Microphone);
-  // @ts-ignore
-  const { toggle: toggleCam, enabled: isCamEnabled } = useTrackToggle(Track.Source.Camera);
-  // @ts-ignore
-  const { toggle: toggleScreen, enabled: isScreenEnabled } = useTrackToggle(Track.Source.ScreenShare);
-  
+  const { localParticipant } = useLocalParticipant();
   const participants = useParticipants();
+  
+  // Leemos el estado real del hardware desde el cerebro del participante
+  const isMicEnabled = localParticipant?.isMicrophoneEnabled;
+  const isCamEnabled = localParticipant?.isCameraEnabled;
+  const isScreenEnabled = localParticipant?.isScreenShareEnabled;
+
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+  
+  // Estados para el Fondo Virtual
+  const [isBlurEnabled, setIsBlurEnabled] = useState(false);
+  const [isApplyingBg, setIsApplyingBg] = useState(false);
+
+  // Funciones infalibles para controlar el hardware
+  const toggleMic = () => localParticipant?.setMicrophoneEnabled(!isMicEnabled);
+  const toggleCam = () => localParticipant?.setCameraEnabled(!isCamEnabled);
+  const toggleScreen = () => localParticipant?.setScreenShareEnabled(!isScreenEnabled);
+
+  // MAGIA: Procesador de Fondo Virtual (Desenfocar Fondo)
+  const toggleBackground = async () => {
+    if (!localParticipant || isApplyingBg) return;
+    setIsApplyingBg(true);
+    
+    try {
+      if (!isCamEnabled) {
+        await localParticipant.setCameraEnabled(true);
+      }
+      
+      // Importación dinámica del procesador de LiveKit
+      const { BackgroundBlur } = await import('@livekit/track-processors');
+      const trackPublication = localParticipant.getTrackPublication(Track.Source.Camera);
+      const videoTrack = trackPublication?.videoTrack;
+
+      if (videoTrack) {
+        if (isBlurEnabled) {
+          await videoTrack.stopProcessor();
+          setIsBlurEnabled(false);
+        } else {
+          // Aplicamos un desenfoque profesional de 15px
+          const processor = BackgroundBlur(15);
+          await videoTrack.setProcessor(processor);
+          setIsBlurEnabled(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error aplicando el fondo virtual:", error);
+      alert("Hubo un error al intentar aplicar el fondo virtual.");
+    } finally {
+      setIsApplyingBg(false);
+    }
+  };
 
   return (
     <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-slate-900/95 backdrop-blur px-4 md:px-6 py-3 rounded-2xl border border-slate-700 flex items-center gap-2 sm:gap-4 shadow-2xl z-50">
       
       {/* MENÚ DESPLEGABLE DE PARTICIPANTES */}
       {showParticipants && (
-        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-64 bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl z-50">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-64 bg-slate-900 border border-slate-700 rounded-2xl p-4 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
           <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-2">
             <h3 className="text-white font-bold text-sm">Alumnos en clase ({participants.length})</h3>
             <button onClick={() => setShowParticipants(false)}>
@@ -105,49 +149,63 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         </div>
       )}
 
+      {/* MENÚ DESPLEGABLE DE REACCIONES (ESTÁTICO AL HACER CLIC) */}
+      {showReactions && (
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
+          {['👏', '😂', '❤️', '👍', '🎉', '🤯'].map(e => (
+            <button 
+              key={e} 
+              onClick={() => { onAction('reaction', e); setShowReactions(false); }} 
+              className="text-2xl hover:scale-125 transition-transform px-1 focus:outline-none"
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Botón Micrófono */}
-      <button onClick={() => toggleMic()} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isMicEnabled ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white hover:bg-rose-600'}`}>
+      <button onClick={toggleMic} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isMicEnabled ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white hover:bg-rose-600'}`}>
         {isMicEnabled ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
         <span className="text-[9px] mt-1 font-bold tracking-wider">Mic</span>
       </button>
 
       {/* Botón Cámara */}
-      <button onClick={() => toggleCam()} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isCamEnabled ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white hover:bg-rose-600'}`}>
+      <button onClick={toggleCam} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isCamEnabled ? 'bg-slate-800 text-white hover:bg-slate-700' : 'bg-rose-500 text-white hover:bg-rose-600'}`}>
         {isCamEnabled ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
         <span className="text-[9px] mt-1 font-bold tracking-wider">Cámara</span>
       </button>
 
+      {/* Botón Fondo Virtual */}
+      <button onClick={toggleBackground} disabled={isApplyingBg} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isBlurEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'} disabled:opacity-50`}>
+        {isApplyingBg ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Fondo</span>
+      </button>
+
       {/* Botón Compartir Pantalla */}
-      <button onClick={() => toggleScreen()} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isScreenEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+      <button onClick={toggleScreen} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isScreenEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
         <MonitorUp className="w-5 h-5" />
         <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Pantalla</span>
       </button>
 
       {/* Botón Participantes */}
-      <button onClick={() => setShowParticipants(!showParticipants)} className="relative flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
+      <button onClick={() => { setShowParticipants(!showParticipants); setShowReactions(false); }} className="relative flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
         <Users className="w-5 h-5" />
         <span className="text-[9px] mt-1 font-bold tracking-wider">Alumnos</span>
         <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold border-2 border-slate-900">{participants.length}</span>
       </button>
 
       {/* Botón Mano */}
-      <button onClick={() => { onAction('hand', ''); setShowParticipants(false); }} className="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
+      <button onClick={() => { onAction('hand', ''); setShowParticipants(false); setShowReactions(false); }} className="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
         <Hand className="w-5 h-5 text-amber-400" />
         <span className="text-[9px] mt-1 font-bold tracking-wider">Mano</span>
       </button>
 
-      {/* Botón Reacciones (Hover) */}
-      <div className="relative group">
-        <button className="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
-          <Smile className="w-5 h-5 text-amber-400" />
-          <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Reacción</span>
-        </button>
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:flex hover:flex bg-slate-800 p-3 rounded-2xl gap-3 shadow-xl border border-slate-700 z-50 transition-all">
-          {['👏', '😂', '❤️', '👍', '🎉', '🤯'].map(e => (
-            <button key={e} onClick={() => { onAction('reaction', e); setShowParticipants(false); }} className="text-2xl hover:scale-125 transition-transform px-1 focus:outline-none">{e}</button>
-          ))}
-        </div>
-      </div>
+      {/* Botón Reacciones */}
+      <button onClick={() => { setShowReactions(!showReactions); setShowParticipants(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${showReactions ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+        <Smile className="w-5 h-5 text-amber-400" />
+        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Reacción</span>
+      </button>
 
       <div className="w-px h-10 bg-slate-700 mx-1 md:mx-2"></div>
 
@@ -715,9 +773,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    // Si la herramienta no es el lápiz, evitamos dibujar
     if (whiteboardTool !== 'pen') return;
-
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
@@ -766,9 +822,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
 
   const stopDrawing = () => setIsDrawing(false);
 
-  // NUEVO: Funciones para manejar la herramienta de texto en la pizarra
   const handleCanvasContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Si la herramienta es de texto y hacemos clic sobre el contenedor
     if (whiteboardTool === 'text') {
       const container = e.currentTarget;
       const rect = container.getBoundingClientRect();
@@ -786,7 +840,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       if (ctx) {
-        // Necesitamos mapear las coordenadas visuales CSS de vuelta a la resolución original del canvas (800x800)
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -794,13 +847,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const drawX = textCursor.x * scaleX;
         const drawY = textCursor.y * scaleY;
 
-        ctx.textBaseline = 'top'; // Alinea la parte de arriba de la letra con nuestro punto
+        ctx.textBaseline = 'top';
         ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
         ctx.fillStyle = brushColor;
         ctx.fillText(textInputValue, drawX, drawY);
       }
     }
-    // Ocultar input tras estampar
     setTextCursor(prev => ({ ...prev, visible: false }));
     setTextInputValue("");
   };
@@ -814,9 +866,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
-  // ==========================================
-  // LÓGICA DE FILTRADO PARA ESTUDIANTES INSCRITOS
-  // ==========================================
   const visibleClasses = activeLiveClasses.filter(liveClass => {
     if (isHostOrAdmin) return true;
     if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
@@ -829,14 +878,10 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     return currentUser.assignedTeachers.includes(schedClass.hostName); 
   });
 
-  // ==========================================
-  // RENDER 1: LOBBY
-  // ==========================================
   if (!isInRoom) {
     return (
       <div id="virtual-classroom-lobby" className="space-y-6 animate-in fade-in duration-500 pb-10 relative">
 
-        {/* MODAL DE PROGRAMACIÓN DE CLASES */}
         {isSchedulingModalOpen && (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -915,6 +960,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                             </div>
                           </div>
                           <div className="flex items-center gap-2 w-full sm:w-auto">
+                            {/* Botones de acción directos mantenidos para el estudiante */}
                             <button
                               type="button"
                               onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
@@ -1012,6 +1058,89 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               </div>
             )}
             
+            {/* RADAR DE CLASES ACTIVAS (Para Profesores) */}
+            {isHostOrAdmin && visibleClasses.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                  Transmisiones en Vivo Ahora
+                </h3>
+                <div className="grid gap-3">
+                  {visibleClasses.map(liveClass => (
+                    <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
+                          <Video className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
+                          <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
+                          className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
+                          title="Enviar link directo por WhatsApp"
+                        >
+                          <Share2 className="w-4 h-4 shrink-0" />
+                          <span>Invitar por WhatsApp</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
+                        >
+                          <Play className="w-4 h-4 fill-current shrink-0" /> Entrar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* RADAR DE CLASES PROGRAMADAS (Para Profesores) */}
+            {isHostOrAdmin && visibleScheduledClasses.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-100">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-sky-500" />
+                  Próximos Talleres Programados
+                </h3>
+                <div className="grid gap-3">
+                  {visibleScheduledClasses.map(schedClass => (
+                    <div key={schedClass.id} className="flex flex-col bg-slate-50 border border-slate-200 p-4 rounded-2xl gap-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900 leading-snug">{schedClass.title}</h4>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5">
+                          <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Calendar className="w-3.5 h-3.5 text-slate-400"/> {schedClass.date}</p>
+                          <p className="text-xs text-slate-600 flex items-center gap-1.5 font-medium"><Clock className="w-3.5 h-3.5 text-slate-400"/> {schedClass.time}</p>
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-wider">Facilitador: {schedClass.hostName}</p>
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        <button type="button" onClick={() => copyToClipboard(schedClass.roomCode)} className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Copy className="w-3.5 h-3.5" /> Copiar Link
+                        </button>
+                        
+                        <button type="button" onClick={() => shareScheduledOnWhatsApp(schedClass.roomCode, schedClass.hostName, schedClass.title, schedClass.date, schedClass.time)} className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Share2 className="w-3.5 h-3.5" /> Enviar
+                        </button>
+                        <button type="button" onClick={() => startScheduledRoom(schedClass.roomCode)} className="bg-slate-900 hover:bg-black text-white text-[11px] font-bold py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5">
+                          <Play className="w-3.5 h-3.5" /> Iniciar Taller
+                        </button>
+                        <button type="button" onClick={() => handleDeleteScheduledClass(schedClass.id)} className="text-slate-400 hover:text-rose-500 p-2 transition-colors" title="Cancelar Taller">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
           </div>
 
           {isHostOrAdmin && (
@@ -1090,17 +1219,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
-          {isHostOrAdmin && (
-            <button
-              type="button"
-              onClick={() => shareOnWhatsApp(roomCode, currentUser.name)}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3.5 rounded-xl transition-all flex items-center gap-2 shadow-md text-xs sm:text-sm shrink-0 border border-emerald-400"
-              title="Enviar link directo por WhatsApp"
-            >
-              <Share2 className="w-4 h-4 shrink-0" />
-              <span>Invitar por WhatsApp</span>
-            </button>
-          )}
         </div>
       </div>
 
