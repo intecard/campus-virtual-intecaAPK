@@ -866,6 +866,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   };
 
+  // Se mantienen estas variables por si la lógica subyacente la usas en otro lado,
+  // pero ya no se renderizan en el lobby las tarjetas de "Transmisiones en vivo ahora".
   const visibleClasses = activeLiveClasses.filter(liveClass => {
     if (isHostOrAdmin) return true;
     if (!currentUser.assignedTeachers || currentUser.assignedTeachers.length === 0) return false;
@@ -937,33 +939,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <>
                 <div>
                   <h2 className="text-xl font-bold text-slate-900">Ingresar a una Clase</h2>
-                  <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
+                  <p className="text-sm text-slate-500 mt-1">Ingresa el código que te proporcionó el facilitador para acceder a la sala.</p>
                 </div>
-
-                {/* RADAR DE CLASES ACTIVAS PARA ESTUDIANTES / ADMIN (Vista Superior) */}
-                {visibleClasses.length > 0 && (
-                  <div className="space-y-3 pt-4 border-t border-slate-100">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                      <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                      Transmisiones en Vivo Ahora
-                    </h3>
-                    <div className="grid gap-3">
-                      {visibleClasses.map(liveClass => (
-                        <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
-                              <Video className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
-                              <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
 
                 {/* RADAR DE CLASES PROGRAMADAS PARA ESTUDIANTES */}
                 {visibleScheduledClasses.length > 0 && (
@@ -997,12 +974,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 
                 <div className="relative py-2 flex items-center">
                   <div className="flex-grow border-t border-slate-100"></div>
-                  <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">O ingreso manual</span>
+                  <span className="shrink-0 mx-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ingreso manual</span>
                   <div className="flex-grow border-t border-slate-100"></div>
                 </div>
 
                 {/* FORMULARIO MANUAL */}
-                <form onSubmit={joinRoom} className={`space-y-4 ${visibleClasses.length === 0 && visibleScheduledClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
+                <form onSubmit={joinRoom} className={`space-y-4 ${visibleScheduledClasses.length === 0 ? 'pt-4 border-t border-slate-100' : ''}`}>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-2">Código de la Sala / Link:</label>
                     <div className="flex gap-2">
@@ -1045,31 +1022,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                 >
                   <Calendar className="w-5 h-5 text-slate-400" /> Programar un Taller Futuro
                 </button>
-              </div>
-            )}
-            
-            {/* RADAR DE CLASES ACTIVAS (Para Profesores) */}
-            {isHostOrAdmin && visibleClasses.length > 0 && (
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                  Transmisiones en Vivo Ahora
-                </h3>
-                <div className="grid gap-3">
-                  {visibleClasses.map(liveClass => (
-                    <div key={liveClass.id} className="flex flex-col sm:flex-row sm:items-center justify-between bg-emerald-50 border border-emerald-100 p-3 rounded-2xl gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center shrink-0">
-                          <Video className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
-                          <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
 
