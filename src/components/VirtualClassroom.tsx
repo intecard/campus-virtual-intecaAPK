@@ -940,7 +940,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                   <p className="text-sm text-slate-500 mt-1">Selecciona una clase en vivo activa o ingresa el código manualmente.</p>
                 </div>
 
-                {/* RADAR DE CLASES ACTIVAS PARA ESTUDIANTES */}
+                {/* RADAR DE CLASES ACTIVAS PARA ESTUDIANTES / ADMIN (Vista Superior) */}
                 {visibleClasses.length > 0 && (
                   <div className="space-y-3 pt-4 border-t border-slate-100">
                     <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
@@ -958,16 +958,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                               <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
                               <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2 w-full sm:w-auto">
-                            {/* Botones de acción directos mantenidos para el estudiante */}
-                            <button
-                              type="button"
-                              onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
-                            >
-                              <Play className="w-4 h-4 fill-current shrink-0" /> Entrar Directamente
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -1076,24 +1066,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                           <h4 className="text-sm font-bold text-slate-800">Clase con {liveClass.hostName || 'Facilitador'}</h4>
                           <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider">Sala: {liveClass.roomCode}</p>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <button
-                          type="button"
-                          onClick={() => shareOnWhatsApp(liveClass.roomCode, liveClass.hostName)}
-                          className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0 w-full sm:w-auto"
-                          title="Enviar link directo por WhatsApp"
-                        >
-                          <Share2 className="w-4 h-4 shrink-0" />
-                          <span>Invitar por WhatsApp</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => triggerPermissionsAndJoin(liveClass.roomCode)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 shrink-0 w-full sm:w-auto"
-                        >
-                          <Play className="w-4 h-4 fill-current shrink-0" /> Entrar
-                        </button>
                       </div>
                     </div>
                   ))}
@@ -1216,6 +1188,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         </div>
         
         <div className="flex flex-wrap items-center gap-2 md:gap-3 w-full md:w-auto justify-end">
+          {/* NUEVO BOTÓN DE WHATSAPP MOVIDO A LA SALA ACTIVA */}
+          {isHostOrAdmin && (
+            <button
+              type="button"
+              onClick={() => shareOnWhatsApp(roomCode, currentUser.name)}
+              className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 sm:px-4 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm border border-emerald-400 shrink-0"
+              title="Enviar link directo por WhatsApp"
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span className="hidden sm:inline">Invitar por WhatsApp</span>
+              <span className="sm:hidden">Invitar</span>
+            </button>
+          )}
           <div className="bg-slate-800 px-4 py-2 rounded-xl border border-slate-700 font-mono text-sm font-bold text-center">
             Código: <span className="text-emerald-400">{roomCode}</span>
           </div>
