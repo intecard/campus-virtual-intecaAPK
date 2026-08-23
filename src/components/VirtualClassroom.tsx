@@ -103,14 +103,14 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
     }
   };
 
-  // 🚀 LIBRERÍA DE FONDOS VIRTUALES
+  // 🚀 LIBRERÍA DE FONDOS VIRTUALES CON IMÁGENES LOCALES DE INTECA
   const BACKGROUNDS = [
     { id: 'none', label: 'Sin Fondo', type: 'none' },
     { id: 'blur', label: 'Desenfocar', type: 'blur' },
-    { id: 'office', label: 'Oficina', type: 'image', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80' },
-    { id: 'living', label: 'Sala Moderna', type: 'image', url: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80' },
-    { id: 'library', label: 'Biblioteca', type: 'image', url: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=800&q=80' },
-    { id: 'landscape', label: 'Paisaje', type: 'image', url: 'https://images.unsplash.com/photo-1506744626753-1fa44df31c78?auto=format&fit=crop&w=800&q=80' }
+    { id: 'librero', label: 'Librero', type: 'image', url: '/fondos/librero.jfif' },
+    { id: 'oficina', label: 'Oficina', type: 'image', url: '/fondos/oficina.jfif' },
+    { id: 'silla', label: 'Silla', type: 'image', url: '/fondos/silla.jpg' },
+    { id: 'pared', label: 'Pared INTECA', type: 'image', url: '/fondos/pared.jpg' }
   ];
 
   // MAGIA: Procesador de Fondos Múltiples
@@ -137,6 +137,7 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
           await videoTrack.setProcessor(processor);
           setActiveBg('blur');
         } else if (bg.type === 'image') {
+          // El procesador toma la URL de la imagen local que servirá el navegador
           const processor = VirtualBackground(bg.url);
           await videoTrack.setProcessor(processor);
           setActiveBg(bg.id);
