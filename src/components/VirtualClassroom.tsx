@@ -194,9 +194,9 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         </div>
       )}
 
-      {/* MENÚ DESPLEGABLE "VER MÁS" */}
+      {/* NUEVO MENÚ DESPLEGABLE "VER MÁS" (MÓVIL/TABLET) */}
       {showMore && (
-        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex gap-2 sm:gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex lg:hidden gap-2 sm:gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
           {/* Botón Fondo Virtual -> Abre Selector de Fondos */}
           <button onClick={() => { setShowBgSelector(!showBgSelector); setShowMore(false); }} disabled={isApplyingBg} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${activeBg !== 'none' ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-700 text-white hover:bg-slate-600'} disabled:opacity-50`}>
             {isApplyingBg ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
@@ -270,6 +270,17 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         <span className="text-[9px] mt-1 font-bold tracking-wider">Cámara</span>
       </button>
 
+      {/* Opciones Visibles Solo en Desktop */}
+      <button onClick={() => { setShowBgSelector(!showBgSelector); setShowReactions(false); setShowParticipants(false); }} disabled={isApplyingBg} className={`hidden lg:flex flex-col items-center justify-center w-14 h-14 rounded-xl transition-all ${activeBg !== 'none' || showBgSelector ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'} disabled:opacity-50`}>
+        {isApplyingBg ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Fondo</span>
+      </button>
+
+      <button onClick={() => { toggleScreen(); setShowReactions(false); setShowBgSelector(false); setShowParticipants(false); }} className={`hidden lg:flex flex-col items-center justify-center w-14 h-14 rounded-xl transition-all ${isScreenEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+        <MonitorUp className="w-5 h-5" />
+        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Pantalla</span>
+      </button>
+
       {/* Botón Participantes */}
       <button onClick={() => { setShowParticipants(!showParticipants); setShowReactions(false); setShowMore(false); setShowBgSelector(false); }} className="relative flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
         <Users className="w-5 h-5" />
@@ -277,8 +288,19 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold border-2 border-slate-900">{participants.length}</span>
       </button>
 
-      {/* Botón Ver Más */}
-      <button onClick={() => { setShowMore(!showMore); setShowParticipants(false); setShowReactions(false); setShowBgSelector(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${showMore || showBgSelector ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+      {/* Más Opciones Visibles Solo en Desktop */}
+      <button onClick={() => { onAction('hand', ''); setShowReactions(false); setShowBgSelector(false); setShowParticipants(false); }} className="hidden lg:flex flex-col items-center justify-center w-14 h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
+        <Hand className="w-5 h-5 text-amber-400" />
+        <span className="text-[9px] mt-1 font-bold tracking-wider">Mano</span>
+      </button>
+
+      <button onClick={() => { setShowReactions(!showReactions); setShowParticipants(false); setShowBgSelector(false); }} className={`hidden lg:flex flex-col items-center justify-center w-14 h-14 rounded-xl transition-all ${showReactions ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+        <Smile className="w-5 h-5 text-amber-400" />
+        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Reacción</span>
+      </button>
+
+      {/* Botón Ver Más (SOLO MÓVIL/TABLET) */}
+      <button onClick={() => { setShowMore(!showMore); setShowParticipants(false); setShowReactions(false); setShowBgSelector(false); }} className={`flex lg:hidden flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${showMore || showBgSelector ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
         <MoreHorizontal className="w-5 h-5" />
         <span className="text-[9px] mt-1 font-bold tracking-wider">Ver más</span>
       </button>
