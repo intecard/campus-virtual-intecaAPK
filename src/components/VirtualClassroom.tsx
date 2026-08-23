@@ -110,7 +110,10 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
     { id: 'librero', label: 'Librero', type: 'image', url: '/fondos/librero.jfif' },
     { id: 'oficina', label: 'Oficina', type: 'image', url: '/fondos/oficina.jfif' },
     { id: 'silla', label: 'Silla', type: 'image', url: '/fondos/silla.jpg' },
-    { id: 'pared', label: 'Pared INTECA', type: 'image', url: '/fondos/pared.jpg' }
+    { id: 'pared', label: 'Pared INTECA', type: 'image', url: '/fondos/pared.jpg' },
+    { id: 'sala', label: 'Sala VIP', type: 'image', url: '/fondos/sala.jpg' },
+    { id: 'rincon', label: 'Rincón Estudio', type: 'image', url: '/fondos/rincon.webp' },
+    { id: 'vista', label: 'Vista Ciudad', type: 'image', url: '/fondos/vista.jpg' }
   ];
 
   // MAGIA: Procesador de Fondos Múltiples
