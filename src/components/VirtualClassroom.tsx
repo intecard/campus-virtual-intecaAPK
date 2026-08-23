@@ -29,7 +29,8 @@ import {
   Users,
   Hand,
   Smile,
-  Sparkles
+  Sparkles,
+  MoreHorizontal
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../firebase"; 
@@ -79,18 +80,41 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
 
   const [showParticipants, setShowParticipants] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
+  const [showMore, setShowMore] = useState(false); 
+  const [showBgSelector, setShowBgSelector] = useState(false); // NUEVO: Menú de fondos
   
   // Estados para el Fondo Virtual
-  const [isBlurEnabled, setIsBlurEnabled] = useState(false);
+  const [activeBg, setActiveBg] = useState('none');
   const [isApplyingBg, setIsApplyingBg] = useState(false);
 
   // Funciones infalibles para controlar el hardware
   const toggleMic = () => localParticipant?.setMicrophoneEnabled(!isMicEnabled);
   const toggleCam = () => localParticipant?.setCameraEnabled(!isCamEnabled);
-  const toggleScreen = () => localParticipant?.setScreenShareEnabled(!isScreenEnabled);
+  
+  // 🚀 MEJORA: COMPARTIR PANTALLA ASÍNCRONO PARA APPS Y WEB
+  const toggleScreen = async () => {
+    if (!localParticipant) return;
+    try {
+      // LiveKit invocará al sistema operativo para capturar TODA la pantalla (y otras apps)
+      await localParticipant.setScreenShareEnabled(!isScreenEnabled);
+    } catch (error) {
+      console.error("Error al compartir pantalla:", error);
+      alert("No se pudo compartir la pantalla. Asegúrate de otorgar los permisos necesarios en tu dispositivo o navegador.");
+    }
+  };
 
-  // MAGIA: Procesador de Fondo Virtual (Desenfocar Fondo)
-  const toggleBackground = async () => {
+  // 🚀 LIBRERÍA DE FONDOS VIRTUALES
+  const BACKGROUNDS = [
+    { id: 'none', label: 'Sin Fondo', type: 'none' },
+    { id: 'blur', label: 'Desenfocar', type: 'blur' },
+    { id: 'office', label: 'Oficina', type: 'image', url: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800&q=80' },
+    { id: 'living', label: 'Sala Moderna', type: 'image', url: 'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=800&q=80' },
+    { id: 'library', label: 'Biblioteca', type: 'image', url: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?auto=format&fit=crop&w=800&q=80' },
+    { id: 'landscape', label: 'Paisaje', type: 'image', url: 'https://images.unsplash.com/photo-1506744626753-1fa44df31c78?auto=format&fit=crop&w=800&q=80' }
+  ];
+
+  // MAGIA: Procesador de Fondos Múltiples
+  const applyBackground = async (bg: any) => {
     if (!localParticipant || isApplyingBg) return;
     setIsApplyingBg(true);
     
@@ -100,26 +124,32 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
       }
       
       // Importación dinámica del procesador de LiveKit
-      const { BackgroundBlur } = await import('@livekit/track-processors');
+      const { BackgroundBlur, VirtualBackground } = await import('@livekit/track-processors');
       const trackPublication = localParticipant.getTrackPublication(Track.Source.Camera);
       const videoTrack = trackPublication?.videoTrack;
 
       if (videoTrack) {
-        if (isBlurEnabled) {
-          await videoTrack.stopProcessor();
-          setIsBlurEnabled(false);
-        } else {
-          // Aplicamos un desenfoque profesional de 15px
+        // Limpiamos cualquier filtro previo
+        await videoTrack.stopProcessor();
+        
+        if (bg.type === 'blur') {
           const processor = BackgroundBlur(15);
           await videoTrack.setProcessor(processor);
-          setIsBlurEnabled(true);
+          setActiveBg('blur');
+        } else if (bg.type === 'image') {
+          const processor = VirtualBackground(bg.url);
+          await videoTrack.setProcessor(processor);
+          setActiveBg(bg.id);
+        } else {
+          setActiveBg('none');
         }
       }
     } catch (error) {
       console.error("Error aplicando el fondo virtual:", error);
-      alert("Hubo un error al intentar aplicar el fondo virtual.");
+      alert("Hubo un error al intentar aplicar el fondo virtual. Verifica tu conexión.");
     } finally {
       setIsApplyingBg(false);
+      setShowBgSelector(false); // Cerramos el menú
     }
   };
 
@@ -149,7 +179,7 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         </div>
       )}
 
-      {/* MENÚ DESPLEGABLE DE REACCIONES (ESTÁTICO AL HACER CLIC) */}
+      {/* MENÚ DESPLEGABLE DE REACCIONES */}
       {showReactions && (
         <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
           {['👏', '😂', '❤️', '👍', '🎉', '🤯'].map(e => (
@@ -161,6 +191,70 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
               {e}
             </button>
           ))}
+        </div>
+      )}
+
+      {/* MENÚ DESPLEGABLE "VER MÁS" */}
+      {showMore && (
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex gap-2 sm:gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
+          {/* Botón Fondo Virtual -> Abre Selector de Fondos */}
+          <button onClick={() => { setShowBgSelector(!showBgSelector); setShowMore(false); }} disabled={isApplyingBg} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${activeBg !== 'none' ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-700 text-white hover:bg-slate-600'} disabled:opacity-50`}>
+            {isApplyingBg ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Fondo</span>
+          </button>
+
+          {/* Botón Compartir Pantalla */}
+          <button onClick={() => { toggleScreen(); setShowMore(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isScreenEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-700 text-white hover:bg-slate-600'}`}>
+            <MonitorUp className="w-5 h-5" />
+            <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Pantalla</span>
+          </button>
+
+          {/* Botón Mano */}
+          <button onClick={() => { onAction('hand', ''); setShowMore(false); }} className="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-all">
+            <Hand className="w-5 h-5 text-amber-400" />
+            <span className="text-[9px] mt-1 font-bold tracking-wider">Mano</span>
+          </button>
+
+          {/* Botón Reacciones */}
+          <button onClick={() => { setShowReactions(!showReactions); setShowMore(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all bg-slate-700 text-white hover:bg-slate-600`}>
+            <Smile className="w-5 h-5 text-amber-400" />
+            <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Reacción</span>
+          </button>
+        </div>
+      )}
+
+      {/* NUEVO MENÚ DESPLEGABLE: GALERÍA DE FONDOS */}
+      {showBgSelector && (
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-72 bg-slate-900 border border-slate-700 rounded-3xl p-4 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
+          <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-3">
+            <h3 className="text-white font-bold text-sm flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-emerald-400" /> Fondos Virtuales
+            </h3>
+            <button onClick={() => setShowBgSelector(false)}>
+              <X className="w-4 h-4 text-slate-400 hover:text-white transition-colors" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto scrollbar-none pr-1">
+            {BACKGROUNDS.map(bg => (
+              <button 
+                key={bg.id}
+                onClick={() => applyBackground(bg)}
+                className={`relative overflow-hidden h-16 rounded-xl border-2 transition-all group ${activeBg === bg.id ? 'border-emerald-500 ring-2 ring-emerald-500/30' : 'border-slate-700 hover:border-slate-500'}`}
+              >
+                {bg.type === 'image' ? (
+                  <>
+                    <img src={bg.url} alt={bg.label} className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" crossOrigin="anonymous" />
+                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-all"></div>
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-slate-800 flex items-center justify-center">
+                    {bg.type === 'blur' ? <Sparkles className="w-5 h-5 text-slate-300" /> : <VideoOff className="w-5 h-5 text-slate-500" />}
+                  </div>
+                )}
+                <span className="absolute bottom-1 left-0 right-0 text-[10px] font-bold text-white text-center drop-shadow-md z-10">{bg.label}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -176,35 +270,17 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         <span className="text-[9px] mt-1 font-bold tracking-wider">Cámara</span>
       </button>
 
-      {/* Botón Fondo Virtual */}
-      <button onClick={toggleBackground} disabled={isApplyingBg} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isBlurEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'} disabled:opacity-50`}>
-        {isApplyingBg ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Fondo</span>
-      </button>
-
-      {/* Botón Compartir Pantalla */}
-      <button onClick={toggleScreen} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${isScreenEnabled ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-        <MonitorUp className="w-5 h-5" />
-        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Pantalla</span>
-      </button>
-
       {/* Botón Participantes */}
-      <button onClick={() => { setShowParticipants(!showParticipants); setShowReactions(false); }} className="relative flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
+      <button onClick={() => { setShowParticipants(!showParticipants); setShowReactions(false); setShowMore(false); setShowBgSelector(false); }} className="relative flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
         <Users className="w-5 h-5" />
         <span className="text-[9px] mt-1 font-bold tracking-wider">Alumnos</span>
         <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold border-2 border-slate-900">{participants.length}</span>
       </button>
 
-      {/* Botón Mano */}
-      <button onClick={() => { onAction('hand', ''); setShowParticipants(false); setShowReactions(false); }} className="flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition-all">
-        <Hand className="w-5 h-5 text-amber-400" />
-        <span className="text-[9px] mt-1 font-bold tracking-wider">Mano</span>
-      </button>
-
-      {/* Botón Reacciones */}
-      <button onClick={() => { setShowReactions(!showReactions); setShowParticipants(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${showReactions ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
-        <Smile className="w-5 h-5 text-amber-400" />
-        <span className="text-[9px] mt-1 font-bold tracking-wider text-center leading-tight">Reacción</span>
+      {/* Botón Ver Más */}
+      <button onClick={() => { setShowMore(!showMore); setShowParticipants(false); setShowReactions(false); setShowBgSelector(false); }} className={`flex flex-col items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-xl transition-all ${showMore || showBgSelector ? 'bg-slate-700 text-white shadow-inner' : 'bg-slate-800 text-white hover:bg-slate-700'}`}>
+        <MoreHorizontal className="w-5 h-5" />
+        <span className="text-[9px] mt-1 font-bold tracking-wider">Ver más</span>
       </button>
 
       <div className="w-px h-10 bg-slate-700 mx-1 md:mx-2"></div>
@@ -835,7 +911,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
     }
   };
 
-  const finalizeText = () => {
+  const finalizeText = (e?: React.FormEvent) => {
+    if (e) e.preventDefault(); // Previene recarga de página al dar Enter en móviles
     if (textInputValue.trim() && canvasRef.current) {
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
@@ -848,7 +925,8 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const drawY = textCursor.y * scaleY;
 
         ctx.textBaseline = 'top';
-        ctx.font = `bold ${Math.max(16, brushSize * 4)}px sans-serif`;
+        // TAMAÑO FIJO A 18PX (Ignora el brushSize)
+        ctx.font = `bold 18px sans-serif`;
         ctx.fillStyle = brushColor;
         ctx.fillText(textInputValue, drawX, drawY);
       }
@@ -1176,8 +1254,12 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               style={{ height: '100%', width: '100%', borderRadius: '1.5rem', overflow: 'hidden', position: 'relative' }}
               onDisconnected={leaveRoom}
             >
-              {/* Ocultamos la barra predeterminada de LiveKit usando CSS puro */}
-              <style>{`.lk-control-bar { display: none !important; } .lk-focus-layout { padding-bottom: 90px !important; }`}</style>
+              {/* Ocultamos la barra predeterminada de LiveKit y forzamos el video a cubrir toda la pantalla */}
+              <style>{`
+                .lk-control-bar { display: none !important; } 
+                .lk-focus-layout { padding-bottom: 90px !important; }
+                .lk-participant-tile video { object-fit: cover !important; }
+              `}</style>
               
               <VideoConference />
               <RoomAudioRenderer />
@@ -1311,33 +1393,31 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                     style={{ width: '100%', height: '100%' }}
                   />
                   
-                  {/* NUEVO: Input de texto sobre la pizarra */}
+                  {/* NUEVO: Input de texto sobre la pizarra envuelto en <form> */}
                   {textCursor.visible && (
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={textInputValue}
-                      onChange={(e) => setTextInputValue(e.target.value)}
-                      onBlur={finalizeText}
-                      onKeyDown={(e) => e.key === 'Enter' && finalizeText()}
-                      style={{
-                        position: 'absolute',
-                        left: textCursor.x,
-                        top: textCursor.y,
-                        color: brushColor,
-                        fontSize: `${Math.max(16, brushSize * 4)}px`,
-                        fontWeight: 'bold',
-                        fontFamily: 'sans-serif',
-                        background: 'transparent',
-                        border: '1px dashed #94a3b8',
-                        outline: 'none',
-                        padding: 0,
-                        margin: 0,
-                        minWidth: '200px',
-                        zIndex: 20
-                      }}
-                      placeholder="Escribe aquí..."
-                    />
+                    <form onSubmit={finalizeText} className="absolute m-0 p-0" style={{ left: textCursor.x, top: textCursor.y, zIndex: 20 }}>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={textInputValue}
+                        onChange={(e) => setTextInputValue(e.target.value)}
+                        onBlur={() => finalizeText()}
+                        style={{
+                          color: brushColor,
+                          fontSize: `18px`, // Tamaño fijo a 18px como pediste
+                          fontWeight: 'bold',
+                          fontFamily: 'sans-serif',
+                          background: 'transparent',
+                          border: '1px dashed #94a3b8',
+                          outline: 'none',
+                          padding: '2px 4px', // Mejor hitbox
+                          margin: 0,
+                          minWidth: '150px',
+                        }}
+                        placeholder="Escribe aquí y presiona Ir..."
+                        autoFocus
+                      />
+                    </form>
                   )}
                 </div>
 
