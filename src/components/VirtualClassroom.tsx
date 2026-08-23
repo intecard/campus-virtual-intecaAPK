@@ -731,16 +731,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const handleNetworkDisconnect = () => {
-    // Si la red falla o la app se minimiza mucho tiempo (ej. al abrir WhatsApp),
-    // limpia localmente SIN disparar el cuadro de confirmación.
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-    setIsInRoom(false);
-    setRoomCode("");
-    setLiveKitToken("");
-    setChatMessages([]);
+    // MAGIA: No hacemos NADA destructivo aquí.
+    // Cuando la app se va a segundo plano (para abrir WhatsApp), el OS pausa la red.
+    // LiveKit detecta desconexión, pero tiene un motor interno de RECONEXIÓN AUTOMÁTICA.
+    // Si ponemos setIsInRoom(false) aquí, matamos la sala antes de que pueda reconectar.
+    console.log("App en segundo plano o red inestable. LiveKit se reconectará automáticamente.");
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
