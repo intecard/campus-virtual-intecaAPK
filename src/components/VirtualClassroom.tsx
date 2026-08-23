@@ -194,7 +194,7 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         </div>
       )}
 
-      {/* NUEVO MENÚ DESPLEGABLE "VER MÁS" (MÓVIL/TABLET) */}
+      {/* MENÚ DESPLEGABLE "VER MÁS" (MÓVIL/TABLET) */}
       {showMore && (
         <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 p-3 rounded-2xl flex lg:hidden gap-2 sm:gap-3 shadow-xl border border-slate-700 z-50 animate-in fade-in slide-in-from-bottom-2">
           {/* Botón Fondo Virtual -> Abre Selector de Fondos */}
@@ -223,7 +223,7 @@ function CustomLiveKitBar({ onLeave, onAction }: { onLeave: () => void, onAction
         </div>
       )}
 
-      {/* NUEVO MENÚ DESPLEGABLE: GALERÍA DE FONDOS */}
+      {/* MENÚ DESPLEGABLE: GALERÍA DE FONDOS */}
       {showBgSelector && (
         <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 w-72 bg-slate-900 border border-slate-700 rounded-3xl p-4 shadow-2xl z-50 animate-in fade-in slide-in-from-bottom-2">
           <div className="flex justify-between items-center mb-3 border-b border-slate-800 pb-3">
@@ -562,12 +562,27 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   }, []);
 
   // ==========================================
-  // COMPARTIR ENLACE POR WHATSAPP (CORREGIDO A FACILITADOR)
+  // 🚀 COMPARTIR ENLACE (CORREGIDO PARA DOMINIO REAL Y NAVIGATOR.SHARE)
   // ==========================================
-  const shareOnWhatsApp = (code: string, hostName?: string) => {
-    const joinUrl = `${window.location.origin}/?room=${code}`;
+  const shareOnWhatsApp = async (code: string, hostName?: string) => {
+    const joinUrl = `https://campus.inteca.com.do/?room=${code}`;
     const hostText = hostName ? ` con el facilitador *${hostName}*` : '';
     const message = `¡Hola! Te invito a unirte a la clase en vivo${hostText} de *INTECA Campus Virtual*.\n\n👉 *Entra directo a la videollamada aquí:*\n${joinUrl}`;
+    
+    // Si el celular permite invocar la ventana nativa de compartir, lo hacemos
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Clase en Vivo - INTECA',
+          text: message,
+        });
+        return; // Salimos para no abrir la pestaña web
+      } catch (error) {
+        console.log("Compartir nativo cancelado o falló:", error);
+      }
+    }
+
+    // Fallback: abrir en una pestaña nueva si es PC o si falla el nativo
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
@@ -652,19 +667,35 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const copyToClipboard = (code: string) => {
-    const joinUrl = `${window.location.origin}/?room=${code}`;
+    const joinUrl = `https://campus.inteca.com.do/?room=${code}`;
     navigator.clipboard.writeText(joinUrl);
     alert("¡Enlace copiado al portapapeles!");
   };
 
-  const shareScheduledOnWhatsApp = (code: string, hostName: string, title: string, date: string, time: string) => {
-    const joinUrl = `${window.location.origin}/?room=${code}`;
+  const shareScheduledOnWhatsApp = async (code: string, hostName: string, title: string, date: string, time: string) => {
+    const joinUrl = `https://campus.inteca.com.do/?room=${code}`;
     const message = `📅 *¡Reserva la fecha!* Te invito a la clase programada de *INTECA Campus Virtual*.\n\n📚 *Tema:* ${title}\n👨‍🏫 *Facilitador:* ${hostName}\n🗓️ *Fecha:* ${date}\n⏰ *Hora:* ${time}\n\n👉 *Guarda este enlace para entrar el día de la clase:*\n${joinUrl}`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Clase Programada - INTECA',
+          text: message,
+        });
+        return;
+      } catch (error) {
+        console.log("Compartir nativo cancelado o falló:", error);
+      }
+    }
+    
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
 
-  const leaveRoom = () => {
+  // ==========================================
+  // 🚀 MANEJO DE SALIDA (SEPARADO: MANUAL VS DESCONEXIÓN DE RED)
+  // ==========================================
+  const handleManualLeave = () => {
     const confirmMsg = isHostOrAdmin 
       ? "¿Seguro que deseas FINALIZAR la clase para todos los participantes?" 
       : "¿Seguro que deseas salir de la clase?";
@@ -693,6 +724,19 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
       setLiveKitToken("");
       setChatMessages([]);
     }
+  };
+
+  const handleNetworkDisconnect = () => {
+    // Si la red falla o la app se minimiza mucho tiempo (ej. al abrir WhatsApp),
+    // limpia localmente SIN disparar el cuadro de confirmación.
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+    setIsInRoom(false);
+    setRoomCode("");
+    setLiveKitToken("");
+    setChatMessages([]);
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -1274,7 +1318,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               serverUrl="wss://inteca-campus-virtual-997yr3h8.livekit.cloud"
               data-lk-theme="default"
               style={{ height: '100%', width: '100%', borderRadius: '1.5rem', overflow: 'hidden', position: 'relative' }}
-              onDisconnected={leaveRoom}
+              onDisconnected={handleNetworkDisconnect} /* 🚀 NUEVO: Manejo limpio de desconexión sin preguntar */
             >
               {/* Ocultamos la barra predeterminada de LiveKit y forzamos el video a cubrir toda la pantalla */}
               <style>{`
@@ -1287,7 +1331,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               <RoomAudioRenderer />
 
               {/* NUESTRA BARRA FLOTANTE EN ESPAÑOL Y A LA MEDIDA */}
-              <CustomLiveKitBar onLeave={leaveRoom} onAction={handleFirebaseAction} />
+              <CustomLiveKitBar onLeave={handleManualLeave} onAction={handleFirebaseAction} />
 
             </LiveKitRoom>
           ) : (
