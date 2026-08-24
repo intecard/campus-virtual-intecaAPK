@@ -35,12 +35,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatCollectionRef = collection(db, `users/${currentUser.id}/ai_chat`);
 
-  // 🚀 SÚPER CAMUFLAJE DE TU LLAVE NUEVA
-  const part1 = "gsk_VNl6qVZ1lPBH0PYGCn7J";
-  const part2 = "WGdyb3FYoiRr2m0SfPBEMA";
-  const part3 = "SS0nxPhCuI";
-  const GROQ_API_KEY = part1 + part2 + part3;
-
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -69,7 +63,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     setIsTyping(true);
 
     try {
-      // 1. Guardar mensaje del usuario
       await addDoc(chatCollectionRef, {
         sender: "user",
         text: userText,
@@ -77,43 +70,26 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
         timestamp: Date.now()
       });
     } catch (error) {
-      console.error("Error guardando mensaje de usuario:", error);
+      console.error("Error:", error);
     }
 
     try {
-      // 🚀 2. CONEXIÓN DIRECTA AL MOTOR ULTRA-RÁPIDO DE GROQ (NUEVO MODELO MIXTRAL)
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetch("https://motor-inteca.onrender.com/api/chat", {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${GROQ_API_KEY}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          model: "mixtral-8x7b-32768", // ⚡ MODELO ACTUALIZADO Y 100% SOPORTADO
-          messages: [
-            { 
-              role: "system", 
-              content: `Eres el Facilitador Docente IA del Instituto Técnico del Caribe (INTECA). Tu trabajo es ayudar, enseñar y resolver dudas técnicas o académicas. Responde de forma clara, profesional y siempre en español. El estudiante con el que hablas se llama ${currentUser.name}. Sé conciso.` 
-            },
-            { 
-              role: "user", 
-              content: userText 
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 1024
+          message: userText,
+          studentName: currentUser.name
         })
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Rechazo de Groq: ${errorData.error?.message || response.statusText}`);
+        throw new Error("El motor IA de INTECA no está encendido o no responde.");
       }
 
       const data = await response.json();
-      const aiReply = data.choices[0].message.content;
+      const aiReply = data.respuesta;
       
-      // 3. Guardar la respuesta ultra-rápida en Firebase
       await addDoc(chatCollectionRef, {
         sender: "ai",
         text: aiReply,
@@ -124,7 +100,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     } catch (error: any) {
       console.error("Error en Tutor IA:", error);
       
-      const fallbackReply = `[SISTEMA IA PAUSADO]: Por favor, verifica que has colocado correctamente tu llave de Groq en el código. Error detallado: ${error.message}`;
+      const fallbackReply = `[SISTEMA DESCONECTADO]: ${error.message} Verifica que el servidor de Render esté activo.`;
 
       await addDoc(chatCollectionRef, {
         sender: "ai",
@@ -192,7 +168,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
                 </div>
                 <div className="flex flex-col items-start">
                   <div className="p-4 rounded-2xl shadow-sm text-sm leading-relaxed bg-slate-50 border border-slate-100 text-slate-700 rounded-bl-none">
-                    ¡Bienvenido al nuevo ecosistema de ultra-velocidad, {currentUser.name}! He sido desconectado de sistemas externos y ahora opero con un motor de alto rendimiento. ¿En qué te puedo ayudar hoy?
+                    ¡Bienvenido al nuevo ecosistema, {currentUser.name}! He sido desconectado de sistemas externos y ahora corro 100% nativo dentro del campus de INTECA. ¿En qué te puedo ayudar hoy?
                   </div>
                 </div>
               </div>
