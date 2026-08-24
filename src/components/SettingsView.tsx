@@ -23,6 +23,10 @@ interface SettingsViewProps {
   onChangeProfile: (data: Partial<UserProfile>) => void;
 }
 
+// 🚀 CONFIGURACIÓN DE TU NUEVO DISCO DURO (CLOUDINARY)
+const CLOUDINARY_CLOUD_NAME = "dug7oqir"; 
+const CLOUDINARY_UPLOAD_PRESET = "inteca_archivos";
+
 export default function SettingsView({ currentUser, onChangeProfile }: SettingsViewProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   
@@ -41,7 +45,7 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
   const [verificationCode, setVerificationCode] = useState("");
 
   // ==========================================
-  // SUBIR IMAGEN (CON TRUCO PARA ANDROID NATIVO)
+  // SUBIR IMAGEN (NUEVO MOTOR CLOUDINARY)
   // ==========================================
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -53,53 +57,55 @@ export default function SettingsView({ currentUser, onChangeProfile }: SettingsV
     setUploadingImage(true);
     
     try {
-      // 🛡️ TRUCO ANTI-CONGELAMIENTO PARA ANDROID:
-      // Convertimos el archivo local a un "Blob" binario puro en memoria.
-      // Esto evita que Firebase intente acceder a rutas bloqueadas del celular y se quede colgado.
-      const arrayBuffer = await file.arrayBuffer();
-      const blob = new Blob([new Uint8Array(arrayBuffer)], { type: file.type });
+      // 🚀 Usamos tu disco duro Cloudinary para evitar bloqueos de Firebase
+      const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
 
-      // Creamos la referencia en Firebase Storage
-      const storageRef = ref(storage, `avatars/${currentUser.id}_${Date.now()}`);
-      
-      // Usamos uploadBytesResumable que no se bloquea en móviles
-      const uploadTask = uploadBytesResumable(storageRef, blob, { contentType: file.type });
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url, true);
 
-      uploadTask.on('state_changed', 
-        (snapshot) => {
-          // El progreso avanza correctamente
-        }, 
-        (error) => {
-          console.error("Error de Firebase:", error);
-          alert("Error al subir la imagen: " + error.message);
-          setUploadingImage(false);
-        }, 
-        async () => {
-          try {
-            // Obtenemos el link cuando termina de subir
-            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            
-            // Actualizamos la vista
-            setUserAvatar(downloadURL);
-            
-            // Auto-guardamos en la Base de Datos
-            const userRef = doc(db, "users", currentUser.id);
-            await updateDoc(userRef, { avatar: downloadURL });
+      xhr.onload = async () => {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          if (data.secure_url) {
+            try {
+              const downloadURL = data.secure_url;
+              
+              // Actualizamos la vista inmediatamente
+              setUserAvatar(downloadURL);
+              
+              // Auto-guardamos en la Base de Datos
+              const userRef = doc(db, "users", currentUser.id);
+              await updateDoc(userRef, { avatar: downloadURL });
 
-            onChangeProfile({
-              name: userName,
-              phone: userPhone,
-              avatar: downloadURL
-            });
+              onChangeProfile({
+                name: userName,
+                phone: userPhone,
+                avatar: downloadURL
+              });
 
-            alert("¡Foto de perfil actualizada con éxito!");
-            setUploadingImage(false);
-          } catch (err) {
-            console.error("Error al guardar URL:", err);
-            setUploadingImage(false);
+              alert("¡Foto de perfil actualizada con éxito!");
+              setUploadingImage(false);
+            } catch (err) {
+              console.error("Error al guardar URL:", err);
+              alert("La imagen subió a la nube, pero hubo un error al sincronizar con tu perfil.");
+              setUploadingImage(false);
+            }
           }
+        } else {
+          alert("Error del servidor de imágenes. No se pudo subir el archivo.");
+          setUploadingImage(false);
         }
-      );
+      };
+
+      xhr.onerror = () => {
+        alert("Fallo de conexión. Verifica tu internet y vuelve a intentar.");
+        setUploadingImage(false);
+      };
+
+      xhr.send(formData);
     } catch (error: any) {
       console.error("Error fatal procesando imagen:", error);
       alert("Hubo un error de procesamiento. Intenta de nuevo.");
