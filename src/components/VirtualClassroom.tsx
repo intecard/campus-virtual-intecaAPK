@@ -54,7 +54,7 @@ import {
   useLocalParticipant,
   useParticipants
 } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { Track, VideoPresets } from "livekit-client"; // 🚀 VideoPresets para resolución HD
 import "@livekit/components-styles";
 import * as jose from 'jose';
 
@@ -731,10 +731,6 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
   };
 
   const handleNetworkDisconnect = () => {
-    // MAGIA: No hacemos NADA destructivo aquí.
-    // Cuando la app se va a segundo plano (para abrir WhatsApp), el OS pausa la red.
-    // LiveKit detecta desconexión, pero tiene un motor interno de RECONEXIÓN AUTOMÁTICA.
-    // Si ponemos setIsInRoom(false) aquí, matamos la sala antes de que pueda reconectar.
     console.log("App en segundo plano o red inestable. LiveKit se reconectará automáticamente.");
   };
 
@@ -990,8 +986,9 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
         const drawY = textCursor.y * scaleY;
 
         ctx.textBaseline = 'top';
-        // TAMAÑO FIJO A 18PX (Ignora el brushSize)
-        ctx.font = `bold 18px sans-serif`;
+        // 🚀 SOLUCIÓN: El canvas tiene 800x800 píxeles internos. Multiplicamos la base de 30px por la escala de la pantalla.
+        const scaledFontSize = Math.round(30 * scaleX);
+        ctx.font = `bold ${scaledFontSize}px sans-serif`;
         ctx.fillStyle = brushColor;
         ctx.fillText(textInputValue, drawX, drawY);
       }
@@ -1317,7 +1314,11 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
               serverUrl="wss://inteca-campus-virtual-997yr3h8.livekit.cloud"
               data-lk-theme="default"
               style={{ height: '100%', width: '100%', borderRadius: '1.5rem', overflow: 'hidden', position: 'relative' }}
-              onDisconnected={handleNetworkDisconnect} /* 🚀 NUEVO: Manejo limpio de desconexión sin preguntar */
+              onDisconnected={handleNetworkDisconnect} 
+              options={{
+                disconnectOnPageLeave: false, // 🚀 NUEVO: Mantener viva la conexión en segundo plano
+                videoCaptureDefaults: { resolution: VideoPresets.h720.resolution } // 🚀 NUEVO: Forzamos HD 720p para nitidez en fondos virtuales
+              }}
             >
               {/* Ocultamos la barra predeterminada de LiveKit y forzamos el video a cubrir toda la pantalla */}
               <style>{`
@@ -1469,7 +1470,7 @@ export default function VirtualClassroom({ currentUser }: VirtualClassroomProps)
                         onBlur={() => finalizeText()}
                         style={{
                           color: brushColor,
-                          fontSize: `18px`, // Tamaño fijo a 18px como pediste
+                          fontSize: `30px`, // Tamaño fijo a 30px como pediste
                           fontWeight: 'bold',
                           fontFamily: 'sans-serif',
                           background: 'transparent',
