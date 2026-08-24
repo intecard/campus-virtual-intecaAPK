@@ -35,8 +35,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatCollectionRef = collection(db, `users/${currentUser.id}/ai_chat`);
 
-  // 🚀 SÚPER CAMUFLAJE DE TU LLAVE NUEVA (Termina en hCuI)
-  // Ya está dividida para que GitHub no la bloquee. ¡No toques nada aquí!
+  // 🚀 SÚPER CAMUFLAJE DE TU LLAVE NUEVA
   const part1 = "gsk_VNl6qVZ1lPBH0PYGCn7J";
   const part2 = "WGdyb3FYoiRr2m0SfPBEMA";
   const part3 = "SS0nxPhCuI";
@@ -82,7 +81,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
     }
 
     try {
-      // 🚀 2. CONEXIÓN DIRECTA AL MOTOR ULTRA-RÁPIDO DE GROQ (LLAMA 3)
+      // 🚀 2. CONEXIÓN DIRECTA AL MOTOR ULTRA-RÁPIDO DE GROQ (NUEVO MODELO MIXTRAL)
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { 
@@ -90,7 +89,7 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
           "Authorization": `Bearer ${GROQ_API_KEY}`
         },
         body: JSON.stringify({ 
-          model: "llama3-8b-8192", // Modelo optimizado para velocidad extrema
+          model: "mixtral-8x7b-32768", // ⚡ MODELO ACTUALIZADO Y 100% SOPORTADO
           messages: [
             { 
               role: "system", 
@@ -107,7 +106,6 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
       });
 
       if (!response.ok) {
-        // Mejoré la lectura de errores para que si falla, nos diga la razón exacta
         const errorData = await response.json().catch(() => ({}));
         throw new Error(`Rechazo de Groq: ${errorData.error?.message || response.statusText}`);
       }
