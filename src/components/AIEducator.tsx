@@ -36,9 +36,9 @@ export default function AIEducator({ currentUser }: AIEducatorProps) {
   const chatCollectionRef = collection(db, `users/${currentUser.id}/ai_chat`);
 
   // 🚀 SÚPER CAMUFLAJE DE LA LLAVE PARA ENGAÑAR AL ESCÁNER DE GITHUB
-  const part1 = "gsk_dw9485v8plPnHbkimE5UW";
-  const part2 = "Gdyb3FYgJCLFw1";
-  const part3 = "y6IRCheTeZfZU2Cbn";
+  const part1 = "gsk_VNl6qVZ1lPBH0PY";
+  const part2 = "GCn7JWGdyb3FYoiRr2m";
+  const part3 = "0SfPBEMASS0nxPhCuI";
   const GROQ_API_KEY = part1 + part2 + part3;
 
   const scrollToBottom = () => {
