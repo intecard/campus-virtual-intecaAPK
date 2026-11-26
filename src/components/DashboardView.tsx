@@ -71,7 +71,7 @@ export default function DashboardView({
   // ==========================================
 
   const studentCourses = courses?.filter((c: any) => 
-    c.students?.includes(currentUser.email) || c.enrolledStudents?.includes(currentUser.email)
+    c.students?.includes(currentUser.email) || c.enrolledStudents?.includes(currentUser.id) || c.enrolledStudents?.includes(currentUser.email)
   ) || []; 
   
   const overallProgress = studentCourses.length > 0 
