@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { auth, db } from "../firebase";
 import { 
   createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   GoogleAuthProvider, 
   signInWithPopup,
   signInWithCredential,
@@ -37,6 +38,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [lastName, setLastName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetNotice, setResetNotice] = useState("");
 
   const [isMfaRequired, setIsMfaRequired] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
@@ -137,6 +139,28 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePasswordReset = async () => {
+    setError("");
+    setResetNotice("");
+    const address = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setError("Escribe primero el correo de tu matrícula.");
+      return;
+    }
+    setLoading(true);
+    try {
+      auth.languageCode = 'es';
+      await sendPasswordResetEmail(auth, address);
+      setResetNotice("Si el correo tiene una cuenta, recibirás un enlace para crear o restablecer tu contraseña. Revisa también la carpeta de spam.");
+    } catch (err: any) {
+      if (err.code === 'auth/user-not-found') {
+        setResetNotice("Si el correo tiene una cuenta, recibirás un enlace para crear o restablecer tu contraseña. Revisa también la carpeta de spam.");
+      } else {
+        setError("No se pudo solicitar el enlace. Inténtalo más tarde o contacta a INTECA.");
+      }
+    } finally { setLoading(false); }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -342,6 +366,13 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-[#0d2136] border border-[#163554] rounded-xl px-4 py-3.5 focus:outline-none focus:border-emerald-500 transition-colors" required />
 
               <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-[#0d2136] border border-[#163554] rounded-xl px-4 py-3.5 focus:outline-none focus:border-emerald-500 transition-colors" required minLength={6} />
+
+              {isLogin && (
+                <div className="space-y-2">
+                  <button type="button" disabled={loading} onClick={handlePasswordReset} className="text-sm text-emerald-400 hover:underline disabled:opacity-50">Olvidé mi contraseña / Primer acceso</button>
+                  {resetNotice && <p role="status" className="text-sm text-emerald-300">{resetNotice}</p>}
+                </div>
+              )}
 
               {!isLogin && (
                 <label className="flex items-center gap-2 text-sm text-slate-300">

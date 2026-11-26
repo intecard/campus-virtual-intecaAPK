@@ -20,7 +20,6 @@ import {
   where, 
   getDocs, 
   updateDoc, 
-  deleteDoc,
   addDoc, 
   orderBy, 
   limit, 
@@ -178,16 +177,9 @@ export async function seedInitialDatabaseIfEmpty(): Promise<void> {
     // 1. Check if courses exist
     const coursesCol = collection(db, "courses");
     const coursesSnap = await getDocs(coursesCol);
-    // Check if the new pharmacology course exists with the duration property to know if we've already migrated to the latest version
-    const hasNewCourses = !coursesSnap.empty && coursesSnap.docs.some(doc => doc.id === "c_farmacologia" && doc.data().duration !== undefined);
-    
-    if (coursesSnap.empty || !hasNewCourses) {
-      console.log("Seeding/Resetting courses in Firestore to the new INTECA courses with duration and level...");
-      
-      // Delete old ones first to prevent duplicate/cluttered course list
-      for (const docSnap of coursesSnap.docs) {
-        await deleteDoc(doc(db, "courses", docSnap.id));
-      }
+    // Existing courses and enrollment memberships must never be reset at startup.
+    if (coursesSnap.empty) {
+      console.log("Seeding the initially empty course catalog...");
 
       const defaultCourses: Course[] = [
         {
